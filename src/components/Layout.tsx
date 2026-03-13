@@ -11,6 +11,7 @@ import {
   Calculator,
   Bell,
   HandCoins,
+  Users,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -39,6 +40,7 @@ const navItems = [
   { title: 'Projeções', icon: TrendingUp, path: '/projections' },
   { title: 'Benchmarks', icon: BarChart3, path: '/benchmarks' },
   { title: 'Simulador', icon: Calculator, path: '/simulator' },
+  { title: 'Usuários', icon: Users, path: '/users' },
   { title: 'Importar Dados', icon: Download, path: '/import' },
 ]
 

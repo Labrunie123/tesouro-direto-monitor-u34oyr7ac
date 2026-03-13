@@ -11,30 +11,35 @@ import Import from './pages/Import'
 import Simulator from './pages/Simulator'
 import Report from './pages/Report'
 import Dividends from './pages/Dividends'
+import Users from './pages/Users'
 import NotFound from './pages/NotFound'
 import { PortfolioProvider } from './stores/usePortfolioStore'
+import { UserProvider } from './stores/useUserStore'
 
 const App = () => (
   <BrowserRouter future={{ v7_startTransition: false, v7_relativeSplatPath: false }}>
-    <PortfolioProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <Routes>
-          <Route element={<Layout />}>
-            <Route path="/" element={<Index />} />
-            <Route path="/portfolio" element={<Portfolio />} />
-            <Route path="/dividends" element={<Dividends />} />
-            <Route path="/projections" element={<Projections />} />
-            <Route path="/benchmarks" element={<Benchmarks />} />
-            <Route path="/simulator" element={<Simulator />} />
-            <Route path="/import" element={<Import />} />
-          </Route>
-          <Route path="/report" element={<Report />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </TooltipProvider>
-    </PortfolioProvider>
+    <UserProvider>
+      <PortfolioProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <Routes>
+            <Route element={<Layout />}>
+              <Route path="/" element={<Index />} />
+              <Route path="/portfolio" element={<Portfolio />} />
+              <Route path="/dividends" element={<Dividends />} />
+              <Route path="/projections" element={<Projections />} />
+              <Route path="/benchmarks" element={<Benchmarks />} />
+              <Route path="/simulator" element={<Simulator />} />
+              <Route path="/users" element={<Users />} />
+              <Route path="/import" element={<Import />} />
+            </Route>
+            <Route path="/report" element={<Report />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </TooltipProvider>
+      </PortfolioProvider>
+    </UserProvider>
   </BrowserRouter>
 )
 
