@@ -66,7 +66,7 @@ interface PortfolioState {
   currentValue: number
   portfolioYield: number
   notifications: Notification[]
-  calculateCurrentValue: (inv: Investment) => number
+  calculateCurrentValue: (inv: Investment, targetDate?: Date) => number
   getYieldForPeriod: (inv: Investment, period: YieldPeriod) => number
 }
 
@@ -143,6 +143,18 @@ const INITIAL_MOCK_DATA: Investment[] = [
     type: 'Prefixado',
     hasSemiannualCoupon: true,
   },
+  {
+    id: '8',
+    title: 'Tesouro IPCA+ com Juros Semestrais 2030 (CJS)',
+    agent: 'XP Investimentos',
+    purchaseDate: '2024-01-15',
+    maturityDate: '2030-08-15',
+    quantity: 11,
+    purchasePrice: 4200.0,
+    rate: 5.5,
+    type: 'IPCA+',
+    hasSemiannualCoupon: true,
+  },
 ]
 
 const INITIAL_BROKERS: BrokerConnection[] = [
@@ -165,7 +177,7 @@ const PortfolioContext = createContext<PortfolioState | undefined>(undefined)
 
 export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
   const [investments, setInvestments] = useState<Investment[]>(() => {
-    const saved = localStorage.getItem('@tesouro-vision:investments')
+    const saved = localStorage.getItem('@tesouro-vision:investments-v2')
     return saved ? JSON.parse(saved) : INITIAL_MOCK_DATA
   })
 
@@ -202,7 +214,7 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
   }, [investments])
 
   useEffect(
-    () => localStorage.setItem('@tesouro-vision:investments', JSON.stringify(investments)),
+    () => localStorage.setItem('@tesouro-vision:investments-v2', JSON.stringify(investments)),
     [investments],
   )
 
@@ -250,10 +262,11 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     )
 
   const calculateCurrentValue = useCallback(
-    (inv: Investment) => {
+    (inv: Investment, targetDate?: Date) => {
+      const date = targetDate || new Date()
       const yearsElapsed = Math.max(
         0,
-        (new Date().getTime() - new Date(inv.purchaseDate).getTime()) / (1000 * 60 * 60 * 24 * 365),
+        (date.getTime() - new Date(inv.purchaseDate).getTime()) / (1000 * 60 * 60 * 24 * 365.25),
       )
       const mockYieldRate =
         inv.type === 'Prefixado' ? inv.rate / 100 : (inv.rate + settings.ipcaAverage24m) / 100
@@ -304,27 +317,29 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
 
     if (eligibleInvestments.length === 0) return null
 
-    const getNextDate = (refDateStr: string, maturityDateStr?: string) => {
-      const [, month, day] = refDateStr.split('T')[0].split('-').map(Number)
-      const d1 = new Date(today.getFullYear(), month - 1, day)
-      const d2 = new Date(today.getFullYear(), (month - 1 + 6) % 12, day)
+    const getNextDate = (maturityDateStr?: string) => {
+      if (!maturityDateStr) return null
+      const [mYear, mMonth, mDay] = maturityDateStr.split('T')[0].split('-').map(Number)
+
+      const month1 = mMonth - 1
+      const month2 = (mMonth - 1 + 6) % 12
+
+      const d1 = new Date(today.getFullYear(), month1, mDay)
+      const d2 = new Date(today.getFullYear(), month2, mDay)
 
       if (d1 < today) d1.setFullYear(d1.getFullYear() + 1)
       if (d2 < today) d2.setFullYear(d2.getFullYear() + 1)
 
       const pDate = d1 < d2 ? d1 : d2
 
-      if (maturityDateStr) {
-        const [mYear, mMonth, mDay] = maturityDateStr.split('T')[0].split('-').map(Number)
-        const matDate = new Date(mYear, mMonth - 1, mDay)
-        if (pDate > matDate) return null
-      }
+      const matDate = new Date(mYear, mMonth - 1, mDay)
+      if (pDate > matDate) return null
 
       return pDate
     }
 
     eligibleInvestments.forEach((inv) => {
-      const pDate = getNextDate(inv.maturityDate || inv.purchaseDate, inv.maturityDate)
+      const pDate = getNextDate(inv.maturityDate || inv.purchaseDate)
       if (pDate) {
         if (!nextDate || pDate < nextDate) {
           nextDate = new Date(pDate)
@@ -335,14 +350,19 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     if (!nextDate) return null
 
     eligibleInvestments.forEach((inv) => {
-      const pDate = getNextDate(inv.maturityDate || inv.purchaseDate, inv.maturityDate)
+      const pDate = getNextDate(inv.maturityDate || inv.purchaseDate)
       if (pDate && pDate.getTime() === nextDate!.getTime()) {
         let grossAmount = 0
         if (inv.type === 'Prefixado') {
           grossAmount = 1000 * inv.quantity * 0.0488088
         } else {
-          const vna = calculateCurrentValue(inv)
-          grossAmount = vna * inv.quantity * 0.029563
+          const baseDate = new Date('2024-01-01')
+          const baseVNA = 4200
+          const yearsToCoupon =
+            (pDate.getTime() - baseDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25)
+          const projectedVna =
+            baseVNA * Math.pow(1 + settings.ipcaAverage24m / 100, Math.max(0, yearsToCoupon))
+          grossAmount = projectedVna * inv.quantity * 0.02956
         }
 
         const [pYear, pMonth, pDay] = inv.purchaseDate.split('T')[0].split('-').map(Number)
@@ -359,7 +379,7 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     })
 
     return { date: nextDate, amount: netAmount }
-  }, [investments, calculateCurrentValue])
+  }, [investments, settings.ipcaAverage24m])
 
   const totalInvested = useMemo(
     () => investments.reduce((acc, inv) => acc + inv.purchasePrice * inv.quantity, 0),
