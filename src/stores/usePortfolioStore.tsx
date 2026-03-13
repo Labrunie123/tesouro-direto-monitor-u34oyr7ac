@@ -1,4 +1,12 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo } from 'react'
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+  useMemo,
+  useCallback,
+} from 'react'
 
 export type BondType = 'IPCA+' | 'Selic' | 'Prefixado' | 'Renda+' | 'Educa+'
 export type YieldPeriod = '1m' | '3m' | '6m' | '12m' | '24m' | 'all'
@@ -241,42 +249,48 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
       ),
     )
 
-  const calculateCurrentValue = (inv: Investment) => {
-    const yearsElapsed = Math.max(
-      0,
-      (new Date().getTime() - new Date(inv.purchaseDate).getTime()) / (1000 * 60 * 60 * 24 * 365),
-    )
-    const mockYieldRate =
-      inv.type === 'Prefixado' ? inv.rate / 100 : (inv.rate + settings.ipcaAverage24m) / 100
-    return inv.purchasePrice * Math.pow(1 + mockYieldRate, yearsElapsed)
-  }
+  const calculateCurrentValue = useCallback(
+    (inv: Investment) => {
+      const yearsElapsed = Math.max(
+        0,
+        (new Date().getTime() - new Date(inv.purchaseDate).getTime()) / (1000 * 60 * 60 * 24 * 365),
+      )
+      const mockYieldRate =
+        inv.type === 'Prefixado' ? inv.rate / 100 : (inv.rate + settings.ipcaAverage24m) / 100
+      return inv.purchasePrice * Math.pow(1 + mockYieldRate, yearsElapsed)
+    },
+    [settings.ipcaAverage24m],
+  )
 
-  const getYieldForPeriod = (inv: Investment, period: YieldPeriod) => {
-    const totalYield = calculateCurrentValue(inv) / inv.purchasePrice - 1
-    const purchaseDate = new Date(inv.purchaseDate)
-    const today = new Date()
-    const monthsElapsed =
-      (today.getFullYear() - purchaseDate.getFullYear()) * 12 +
-      today.getMonth() -
-      purchaseDate.getMonth()
-    if (monthsElapsed === 0) return totalYield * 100
-    const monthlyYield = totalYield / Math.max(1, monthsElapsed)
+  const getYieldForPeriod = useCallback(
+    (inv: Investment, period: YieldPeriod) => {
+      const totalYield = calculateCurrentValue(inv) / inv.purchasePrice - 1
+      const purchaseDate = new Date(inv.purchaseDate)
+      const today = new Date()
+      const monthsElapsed =
+        (today.getFullYear() - purchaseDate.getFullYear()) * 12 +
+        today.getMonth() -
+        purchaseDate.getMonth()
+      if (monthsElapsed === 0) return totalYield * 100
+      const monthlyYield = totalYield / Math.max(1, monthsElapsed)
 
-    switch (period) {
-      case '1m':
-        return monthlyYield * 1 * 100
-      case '3m':
-        return monthlyYield * Math.min(3, monthsElapsed) * 100
-      case '6m':
-        return monthlyYield * Math.min(6, monthsElapsed) * 100
-      case '12m':
-        return monthlyYield * Math.min(12, monthsElapsed) * 100
-      case '24m':
-        return monthlyYield * Math.min(24, monthsElapsed) * 100
-      default:
-        return totalYield * 100
-    }
-  }
+      switch (period) {
+        case '1m':
+          return monthlyYield * 1 * 100
+        case '3m':
+          return monthlyYield * Math.min(3, monthsElapsed) * 100
+        case '6m':
+          return monthlyYield * Math.min(6, monthsElapsed) * 100
+        case '12m':
+          return monthlyYield * Math.min(12, monthsElapsed) * 100
+        case '24m':
+          return monthlyYield * Math.min(24, monthsElapsed) * 100
+        default:
+          return totalYield * 100
+      }
+    },
+    [calculateCurrentValue],
+  )
 
   const nextCoupon = useMemo(() => {
     let nextDate: Date | null = null
@@ -290,7 +304,7 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
 
     if (eligibleInvestments.length === 0) return null
 
-    const getNextDate = (refDateStr: string) => {
+    const getNextDate = (refDateStr: string, maturityDateStr?: string) => {
       const [, month, day] = refDateStr.split('T')[0].split('-').map(Number)
       const d1 = new Date(today.getFullYear(), month - 1, day)
       const d2 = new Date(today.getFullYear(), (month - 1 + 6) % 12, day)
@@ -298,27 +312,42 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
       if (d1 < today) d1.setFullYear(d1.getFullYear() + 1)
       if (d2 < today) d2.setFullYear(d2.getFullYear() + 1)
 
-      return d1 < d2 ? d1 : d2
+      const pDate = d1 < d2 ? d1 : d2
+
+      if (maturityDateStr) {
+        const [mYear, mMonth, mDay] = maturityDateStr.split('T')[0].split('-').map(Number)
+        const matDate = new Date(mYear, mMonth - 1, mDay)
+        if (pDate > matDate) return null
+      }
+
+      return pDate
     }
 
     eligibleInvestments.forEach((inv) => {
-      const refDate = inv.maturityDate || inv.purchaseDate
-      const pDate = getNextDate(refDate)
-      if (!nextDate || pDate < nextDate) {
-        nextDate = new Date(pDate)
+      const pDate = getNextDate(inv.maturityDate || inv.purchaseDate, inv.maturityDate)
+      if (pDate) {
+        if (!nextDate || pDate < nextDate) {
+          nextDate = new Date(pDate)
+        }
       }
     })
 
     if (!nextDate) return null
 
     eligibleInvestments.forEach((inv) => {
-      const refDate = inv.maturityDate || inv.purchaseDate
-      const pDate = getNextDate(refDate)
-      if (pDate.getTime() === nextDate!.getTime()) {
-        const grossAmount = inv.purchasePrice * inv.quantity * (inv.rate / 200)
+      const pDate = getNextDate(inv.maturityDate || inv.purchaseDate, inv.maturityDate)
+      if (pDate && pDate.getTime() === nextDate!.getTime()) {
+        let grossAmount = 0
+        if (inv.type === 'Prefixado') {
+          grossAmount = 1000 * inv.quantity * 0.0488088
+        } else {
+          const vna = calculateCurrentValue(inv)
+          grossAmount = vna * inv.quantity * 0.029563
+        }
+
         const [pYear, pMonth, pDay] = inv.purchaseDate.split('T')[0].split('-').map(Number)
         const purchaseTime = new Date(pYear, pMonth - 1, pDay).getTime()
-        const daysElapsed = Math.floor((pDate.getTime() - purchaseTime) / 86400000)
+        const daysElapsed = Math.round((pDate.getTime() - purchaseTime) / 86400000)
 
         let taxRate = 0.15
         if (daysElapsed <= 180) taxRate = 0.225
@@ -330,7 +359,7 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     })
 
     return { date: nextDate, amount: netAmount }
-  }, [investments])
+  }, [investments, calculateCurrentValue])
 
   const totalInvested = useMemo(
     () => investments.reduce((acc, inv) => acc + inv.purchasePrice * inv.quantity, 0),
@@ -338,7 +367,7 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
   )
   const currentValue = useMemo(
     () => investments.reduce((acc, inv) => acc + calculateCurrentValue(inv) * inv.quantity, 0),
-    [investments, settings.ipcaAverage24m],
+    [investments, calculateCurrentValue],
   )
   const portfolioYield = useMemo(() => {
     if (totalInvested === 0) return 0
@@ -348,7 +377,7 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
       totalWeightedYield += getYieldForPeriod(inv, yieldPeriod) * invWeight
     })
     return totalWeightedYield
-  }, [investments, totalInvested, yieldPeriod, settings.ipcaAverage24m])
+  }, [investments, totalInvested, yieldPeriod, getYieldForPeriod])
 
   return React.createElement(
     PortfolioContext.Provider,
