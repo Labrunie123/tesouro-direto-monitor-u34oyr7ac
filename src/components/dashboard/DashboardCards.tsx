@@ -43,25 +43,51 @@ export function DashboardCards() {
 
   const nextCoupon = useMemo(() => {
     let nextDate: Date | null = null
-    let amount = 0
-    const now = new Date()
+    let netAmount = 0
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
 
+    // First pass: identify the closest chronological date
     investments.forEach((inv) => {
-      if (inv.type === 'IPCA+' && inv.hasSemiannualCoupon) {
+      if (inv.hasSemiannualCoupon) {
         let pDate = new Date(inv.purchaseDate)
-        while (pDate <= now) {
+        pDate.setHours(0, 0, 0, 0)
+        while (pDate < today) {
           pDate.setMonth(pDate.getMonth() + 6)
         }
         if (!nextDate || pDate < nextDate) {
-          nextDate = pDate
-          amount = inv.purchasePrice * inv.quantity * (inv.rate / 200)
-        } else if (pDate.getTime() === nextDate.getTime()) {
-          amount += inv.purchasePrice * inv.quantity * (inv.rate / 200)
+          nextDate = new Date(pDate)
         }
       }
     })
 
-    return nextDate ? { date: nextDate, amount } : null
+    if (!nextDate) return null
+
+    // Second pass: sum the net amounts for all titles paying on that date
+    investments.forEach((inv) => {
+      if (inv.hasSemiannualCoupon) {
+        let pDate = new Date(inv.purchaseDate)
+        pDate.setHours(0, 0, 0, 0)
+        while (pDate < today) {
+          pDate.setMonth(pDate.getMonth() + 6)
+        }
+
+        if (pDate.getTime() === nextDate!.getTime()) {
+          const grossAmount = inv.purchasePrice * inv.quantity * (inv.rate / 200)
+          const purchaseTime = new Date(inv.purchaseDate).getTime()
+          const daysElapsed = Math.floor((pDate.getTime() - purchaseTime) / 86400000)
+
+          let taxRate = 0.15
+          if (daysElapsed <= 180) taxRate = 0.225
+          else if (daysElapsed <= 360) taxRate = 0.2
+          else if (daysElapsed <= 720) taxRate = 0.175
+
+          netAmount += grossAmount * (1 - taxRate)
+        }
+      }
+    })
+
+    return nextDate ? { date: nextDate, amount: netAmount } : null
   }, [investments])
 
   return (
@@ -154,7 +180,7 @@ export function DashboardCards() {
         style={{ animationDelay: '400ms' }}
       >
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Próximo Cupom</CardTitle>
+          <CardTitle className="text-sm font-medium">Próximo Cupom (Líquido)</CardTitle>
           <CalendarDays className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>

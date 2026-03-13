@@ -28,6 +28,7 @@ export function DashboardCharts() {
     'hsl(var(--chart-4))',
     'hsl(var(--chart-5))',
     'hsl(var(--primary))',
+    'hsl(var(--muted-foreground))',
   ]
 
   const allocationData = useMemo(() => {
@@ -43,23 +44,30 @@ export function DashboardCharts() {
 
   const allocationByTypeData = useMemo(() => {
     const groups: Record<string, number> = {
-      'Pós fixados': 0,
-      'Pré fixados': 0,
-      'IPCA com juros semestrais': 0,
-      'IPCA sem semestrais': 0,
+      'Pós-fixados': 0,
+      'Pré-fixados': 0,
+      'Pré-fixados c/ Juros Semestrais': 0,
+      'IPCA+': 0,
+      'IPCA+ c/ Juros Semestrais': 0,
       'Renda+': 0,
       'Educa+': 0,
     }
 
     investments.forEach((inv) => {
       const val = calculateCurrentValue(inv) * inv.quantity
-      if (inv.type === 'Selic') groups['Pós fixados'] += val
-      else if (inv.type === 'Prefixado') groups['Pré fixados'] += val
-      else if (inv.type === 'IPCA+') {
-        if (inv.hasSemiannualCoupon) groups['IPCA com juros semestrais'] += val
-        else groups['IPCA sem semestrais'] += val
-      } else if (inv.type === 'Renda+') groups['Renda+'] += val
-      else if (inv.type === 'Educa+') groups['Educa+'] += val
+      if (inv.type === 'Selic') {
+        groups['Pós-fixados'] += val
+      } else if (inv.type === 'Prefixado') {
+        if (inv.hasSemiannualCoupon) groups['Pré-fixados c/ Juros Semestrais'] += val
+        else groups['Pré-fixados'] += val
+      } else if (inv.type === 'IPCA+') {
+        if (inv.hasSemiannualCoupon) groups['IPCA+ c/ Juros Semestrais'] += val
+        else groups['IPCA+'] += val
+      } else if (inv.type === 'Renda+') {
+        groups['Renda+'] += val
+      } else if (inv.type === 'Educa+') {
+        groups['Educa+'] += val
+      }
     })
 
     return Object.entries(groups)

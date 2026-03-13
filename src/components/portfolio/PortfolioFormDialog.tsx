@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import usePortfolioStore, { Investment } from '@/stores/usePortfolioStore'
 
 const formSchema = z.object({
@@ -109,6 +110,8 @@ export function PortfolioFormDialog({
   }, [open, editingLot, prefillTitle, investments, form])
 
   const existingTitles = Array.from(new Set(investments.map((i) => i.title)))
+  const selectedType = form.watch('type')
+  const showCouponOption = selectedType === 'IPCA+' || selectedType === 'Prefixado'
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -173,6 +176,27 @@ export function PortfolioFormDialog({
                   </FormItem>
                 )}
               />
+
+              {showCouponOption && (
+                <FormField
+                  control={form.control}
+                  name="hasSemiannualCoupon"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3 md:col-span-2 bg-muted/20">
+                      <FormControl>
+                        <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel>Com Juros Semestrais</FormLabel>
+                        <p className="text-[0.8rem] text-muted-foreground">
+                          Marque se o título prevê o pagamento de cupons periódicos.
+                        </p>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+              )}
+
               <FormField
                 control={form.control}
                 name="agent"

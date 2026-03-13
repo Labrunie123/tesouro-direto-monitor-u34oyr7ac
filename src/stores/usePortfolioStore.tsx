@@ -122,6 +122,18 @@ const INITIAL_MOCK_DATA: Investment[] = [
     rate: 11.5,
     type: 'Prefixado',
   },
+  {
+    id: '7',
+    title: 'Tesouro Prefixado com Juros Semestrais 2033',
+    agent: 'Itaú Corretora',
+    purchaseDate: '2023-01-01',
+    maturityDate: '2033-01-01',
+    quantity: 20,
+    purchasePrice: 980.0,
+    rate: 10.5,
+    type: 'Prefixado',
+    hasSemiannualCoupon: true,
+  },
 ]
 
 const INITIAL_BROKERS: BrokerConnection[] = [
@@ -158,9 +170,12 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
   const dividends = useMemo(() => {
     const data: Dividend[] = []
     const currentDate = new Date()
+    currentDate.setHours(0, 0, 0, 0)
+
     investments.forEach((inv) => {
       if (inv.hasSemiannualCoupon) {
         let paymentDate = new Date(inv.purchaseDate)
+        paymentDate.setHours(0, 0, 0, 0)
         paymentDate.setMonth(paymentDate.getMonth() + 6)
         while (paymentDate <= currentDate) {
           data.push({
