@@ -46,6 +46,7 @@ interface PortfolioState {
   yieldPeriod: YieldPeriod
   brokers: BrokerConnection[]
   dividends: Dividend[]
+  nextCoupon: { date: Date; amount: number } | null
   addInvestment: (inv: Omit<Investment, 'id'>) => void
   updateInvestment: (id: string, inv: Partial<Investment>) => void
   deleteInvestment: (id: string) => void
@@ -277,6 +278,60 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     }
   }
 
+  const nextCoupon = useMemo(() => {
+    let nextDate: Date | null = null
+    let netAmount = 0
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    const eligibleInvestments = investments.filter(
+      (inv) => (inv.type === 'IPCA+' || inv.type === 'Prefixado') && inv.hasSemiannualCoupon,
+    )
+
+    if (eligibleInvestments.length === 0) return null
+
+    const getNextDate = (refDateStr: string) => {
+      const [, month, day] = refDateStr.split('T')[0].split('-').map(Number)
+      const d1 = new Date(today.getFullYear(), month - 1, day)
+      const d2 = new Date(today.getFullYear(), (month - 1 + 6) % 12, day)
+
+      if (d1 < today) d1.setFullYear(d1.getFullYear() + 1)
+      if (d2 < today) d2.setFullYear(d2.getFullYear() + 1)
+
+      return d1 < d2 ? d1 : d2
+    }
+
+    eligibleInvestments.forEach((inv) => {
+      const refDate = inv.maturityDate || inv.purchaseDate
+      const pDate = getNextDate(refDate)
+      if (!nextDate || pDate < nextDate) {
+        nextDate = new Date(pDate)
+      }
+    })
+
+    if (!nextDate) return null
+
+    eligibleInvestments.forEach((inv) => {
+      const refDate = inv.maturityDate || inv.purchaseDate
+      const pDate = getNextDate(refDate)
+      if (pDate.getTime() === nextDate!.getTime()) {
+        const grossAmount = inv.purchasePrice * inv.quantity * (inv.rate / 200)
+        const [pYear, pMonth, pDay] = inv.purchaseDate.split('T')[0].split('-').map(Number)
+        const purchaseTime = new Date(pYear, pMonth - 1, pDay).getTime()
+        const daysElapsed = Math.floor((pDate.getTime() - purchaseTime) / 86400000)
+
+        let taxRate = 0.15
+        if (daysElapsed <= 180) taxRate = 0.225
+        else if (daysElapsed <= 360) taxRate = 0.2
+        else if (daysElapsed <= 720) taxRate = 0.175
+
+        netAmount += grossAmount * (1 - taxRate)
+      }
+    })
+
+    return { date: nextDate, amount: netAmount }
+  }, [investments])
+
   const totalInvested = useMemo(
     () => investments.reduce((acc, inv) => acc + inv.purchasePrice * inv.quantity, 0),
     [investments],
@@ -304,6 +359,7 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
         yieldPeriod,
         brokers,
         dividends,
+        nextCoupon,
         addInvestment,
         updateInvestment,
         deleteInvestment,

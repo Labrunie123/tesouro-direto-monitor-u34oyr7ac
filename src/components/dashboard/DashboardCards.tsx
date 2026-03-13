@@ -20,6 +20,7 @@ export function DashboardCards() {
     yieldPeriod,
     setYieldPeriod,
     calculateCurrentValue,
+    nextCoupon,
   } = usePortfolioStore()
 
   const [projectionPeriod, setProjectionPeriod] = useState('12m')
@@ -40,63 +41,6 @@ export function DashboardCards() {
     })
     return totalProjected
   }, [investments, projectionPeriod, calculateCurrentValue])
-
-  const nextCoupon = useMemo(() => {
-    let nextDate: Date | null = null
-    let netAmount = 0
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-
-    const eligibleInvestments = investments.filter(
-      (inv) => (inv.type === 'IPCA+' || inv.type === 'Prefixado') && inv.hasSemiannualCoupon,
-    )
-
-    if (eligibleInvestments.length === 0) return null
-
-    // First pass: identify the closest chronological future date
-    eligibleInvestments.forEach((inv) => {
-      const [year, month, day] = inv.purchaseDate.split('T')[0].split('-').map(Number)
-      const pDate = new Date(year, month - 1, day)
-      pDate.setHours(0, 0, 0, 0)
-
-      while (pDate < today) {
-        pDate.setMonth(pDate.getMonth() + 6)
-      }
-
-      if (!nextDate || pDate < nextDate) {
-        nextDate = new Date(pDate)
-      }
-    })
-
-    if (!nextDate) return null
-
-    // Second pass: sum the net amounts for all titles paying on that date
-    eligibleInvestments.forEach((inv) => {
-      const [year, month, day] = inv.purchaseDate.split('T')[0].split('-').map(Number)
-      const pDate = new Date(year, month - 1, day)
-      pDate.setHours(0, 0, 0, 0)
-
-      while (pDate < today) {
-        pDate.setMonth(pDate.getMonth() + 6)
-      }
-
-      if (pDate.getTime() === nextDate!.getTime()) {
-        const grossAmount = inv.purchasePrice * inv.quantity * (inv.rate / 200)
-        const purchaseTime = new Date(year, month - 1, day).getTime()
-        const daysElapsed = Math.floor((pDate.getTime() - purchaseTime) / 86400000)
-
-        // Regressive IR logic
-        let taxRate = 0.15
-        if (daysElapsed <= 180) taxRate = 0.225
-        else if (daysElapsed <= 360) taxRate = 0.2
-        else if (daysElapsed <= 720) taxRate = 0.175
-
-        netAmount += grossAmount * (1 - taxRate)
-      }
-    })
-
-    return nextDate ? { date: nextDate, amount: netAmount } : null
-  }, [investments])
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
@@ -204,7 +148,7 @@ export function DashboardCards() {
           ) : (
             <>
               <div className="text-xl font-medium text-muted-foreground mt-1">-</div>
-              <p className="text-xs text-muted-foreground mt-1">Sem títulos c/ cupom</p>
+              <p className="text-xs text-muted-foreground mt-1">Nenhum cupom previsto</p>
             </>
           )}
         </CardContent>

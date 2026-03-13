@@ -1,67 +1,11 @@
-import React, { useMemo } from 'react'
+import React from 'react'
 import { CalendarDays } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import usePortfolioStore from '@/stores/usePortfolioStore'
 import { formatCurrency, formatDate } from '@/lib/formatters'
 
 export function NextCouponWidget() {
-  const { investments } = usePortfolioStore()
-
-  const nextCoupon = useMemo(() => {
-    let nextDate: Date | null = null
-    let netAmount = 0
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-
-    const eligibleInvestments = investments.filter(
-      (inv) => (inv.type === 'IPCA+' || inv.type === 'Prefixado') && inv.hasSemiannualCoupon,
-    )
-
-    if (eligibleInvestments.length === 0) return null
-
-    // First pass: identify the closest chronological future date
-    eligibleInvestments.forEach((inv) => {
-      const [year, month, day] = inv.purchaseDate.split('T')[0].split('-').map(Number)
-      const pDate = new Date(year, month - 1, day)
-      pDate.setHours(0, 0, 0, 0)
-
-      while (pDate < today) {
-        pDate.setMonth(pDate.getMonth() + 6)
-      }
-      if (!nextDate || pDate < nextDate) {
-        nextDate = new Date(pDate)
-      }
-    })
-
-    if (!nextDate) return null
-
-    // Second pass: sum the net amounts for all titles paying on that exact date
-    eligibleInvestments.forEach((inv) => {
-      const [year, month, day] = inv.purchaseDate.split('T')[0].split('-').map(Number)
-      const pDate = new Date(year, month - 1, day)
-      pDate.setHours(0, 0, 0, 0)
-
-      while (pDate < today) {
-        pDate.setMonth(pDate.getMonth() + 6)
-      }
-
-      if (pDate.getTime() === nextDate!.getTime()) {
-        const grossAmount = inv.purchasePrice * inv.quantity * (inv.rate / 200)
-        const purchaseTime = new Date(year, month - 1, day).getTime()
-        const daysElapsed = Math.floor((pDate.getTime() - purchaseTime) / 86400000)
-
-        // Regressive IR logic
-        let taxRate = 0.15
-        if (daysElapsed <= 180) taxRate = 0.225
-        else if (daysElapsed <= 360) taxRate = 0.2
-        else if (daysElapsed <= 720) taxRate = 0.175
-
-        netAmount += grossAmount * (1 - taxRate)
-      }
-    })
-
-    return nextDate ? { date: nextDate, amount: netAmount } : null
-  }, [investments])
+  const { nextCoupon } = usePortfolioStore()
 
   return (
     <Card className="bg-primary/5 border-primary/20">

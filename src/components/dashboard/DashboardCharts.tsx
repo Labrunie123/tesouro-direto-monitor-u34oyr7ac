@@ -44,10 +44,11 @@ export function DashboardCharts() {
 
   const allocationByTypeData = useMemo(() => {
     const groups: Record<string, number> = {
-      'Pós-fixados': 0,
+      'Pós-fixados (Selic)': 0,
       'Pré-fixados': 0,
-      'IPCA com juros semestrais': 0,
-      'IPCA sem semestrais': 0,
+      'Pré-fixados com juros semestrais': 0,
+      'IPCA+': 0,
+      'IPCA+ com juros semestrais': 0,
       'Renda+': 0,
       'Educa+': 0,
     }
@@ -55,14 +56,18 @@ export function DashboardCharts() {
     investments.forEach((inv) => {
       const val = calculateCurrentValue(inv) * inv.quantity
       if (inv.type === 'Selic') {
-        groups['Pós-fixados'] += val
+        groups['Pós-fixados (Selic)'] += val
       } else if (inv.type === 'Prefixado') {
-        groups['Pré-fixados'] += val
+        if (inv.hasSemiannualCoupon) {
+          groups['Pré-fixados com juros semestrais'] += val
+        } else {
+          groups['Pré-fixados'] += val
+        }
       } else if (inv.type === 'IPCA+') {
         if (inv.hasSemiannualCoupon) {
-          groups['IPCA com juros semestrais'] += val
+          groups['IPCA+ com juros semestrais'] += val
         } else {
-          groups['IPCA sem semestrais'] += val
+          groups['IPCA+'] += val
         }
       } else if (inv.type === 'Renda+') {
         groups['Renda+'] += val
