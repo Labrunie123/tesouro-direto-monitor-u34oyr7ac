@@ -1,0 +1,177 @@
+import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo } from 'react'
+
+export type BondType = 'IPCA+' | 'Selic' | 'Prefixado' | 'Renda+' | 'Educa+'
+
+export interface Investment {
+  id: string
+  title: string
+  agent: string
+  purchaseDate: string
+  quantity: number
+  purchasePrice: number
+  rate: number
+  type: BondType
+}
+
+interface PortfolioState {
+  investments: Investment[]
+  settings: {
+    lastSync: string
+    ipcaAverage24m: number
+  }
+  addInvestment: (inv: Omit<Investment, 'id'>) => void
+  updateInvestment: (id: string, inv: Partial<Investment>) => void
+  deleteInvestment: (id: string) => void
+  importInvestments: (invs: Omit<Investment, 'id'>[]) => void
+  updateSettings: (settings: Partial<PortfolioState['settings']>) => void
+  // Derived
+  totalInvested: number
+  currentValue: number
+  projectedInterestYear: number
+  portfolioYield: number
+}
+
+const INITIAL_MOCK_DATA: Investment[] = [
+  {
+    id: '1',
+    title: 'Tesouro IPCA+ 2045',
+    agent: 'XP Investimentos',
+    purchaseDate: '2023-01-15',
+    quantity: 15,
+    purchasePrice: 1200.5,
+    rate: 5.5,
+    type: 'IPCA+',
+  },
+  {
+    id: '2',
+    title: 'Tesouro Selic 2029',
+    agent: 'NuInvest',
+    purchaseDate: '2023-06-20',
+    quantity: 5,
+    purchasePrice: 13500.0,
+    rate: 0.1,
+    type: 'Selic',
+  },
+  {
+    id: '3',
+    title: 'Tesouro Renda+ 2030',
+    agent: 'BTG Pactual',
+    purchaseDate: '2024-02-10',
+    quantity: 100,
+    purchasePrice: 500.0,
+    rate: 6.0,
+    type: 'Renda+',
+  },
+  {
+    id: '4',
+    title: 'Tesouro Prefixado 2027',
+    agent: 'Itaú Corretora',
+    purchaseDate: '2022-11-05',
+    quantity: 30,
+    purchasePrice: 750.2,
+    rate: 10.5,
+    type: 'Prefixado',
+  },
+  {
+    id: '5',
+    title: 'Tesouro Educa+ 2035',
+    agent: 'XP Investimentos',
+    purchaseDate: '2024-01-25',
+    quantity: 50,
+    purchasePrice: 620.3,
+    rate: 5.8,
+    type: 'Educa+',
+  },
+]
+
+const PortfolioContext = createContext<PortfolioState | undefined>(undefined)
+
+export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
+  const [investments, setInvestments] = useState<Investment[]>(() => {
+    const saved = localStorage.getItem('@tesouro-vision:investments')
+    return saved ? JSON.parse(saved) : INITIAL_MOCK_DATA
+  })
+
+  const [settings, setSettings] = useState({
+    lastSync: new Date().toISOString(),
+    ipcaAverage24m: 4.5,
+  })
+
+  useEffect(() => {
+    localStorage.setItem('@tesouro-vision:investments', JSON.stringify(investments))
+  }, [investments])
+
+  const addInvestment = (inv: Omit<Investment, 'id'>) => {
+    setInvestments((prev) => [...prev, { ...inv, id: crypto.randomUUID() }])
+  }
+
+  const updateInvestment = (id: string, inv: Partial<Investment>) => {
+    setInvestments((prev) => prev.map((i) => (i.id === id ? { ...i, ...inv } : i)))
+  }
+
+  const deleteInvestment = (id: string) => {
+    setInvestments((prev) => prev.filter((i) => i.id !== id))
+  }
+
+  const importInvestments = (invs: Omit<Investment, 'id'>[]) => {
+    const newInvs = invs.map((i) => ({ ...i, id: crypto.randomUUID() }))
+    setInvestments((prev) => [...prev, ...newInvs])
+  }
+
+  const updateSettings = (newSettings: Partial<PortfolioState['settings']>) => {
+    setSettings((prev) => ({ ...prev, ...newSettings }))
+  }
+
+  // Simplified VNA Mock Calculation
+  const calculateCurrentValue = (inv: Investment) => {
+    const purchaseDate = new Date(inv.purchaseDate)
+    const today = new Date()
+    const yearsElapsed = Math.max(
+      0,
+      (today.getTime() - purchaseDate.getTime()) / (1000 * 60 * 60 * 24 * 365),
+    )
+    const mockYieldRate =
+      inv.type === 'Prefixado' ? inv.rate / 100 : (inv.rate + settings.ipcaAverage24m) / 100
+    return inv.purchasePrice * Math.pow(1 + mockYieldRate, yearsElapsed)
+  }
+
+  const totalInvested = useMemo(() => {
+    return investments.reduce((acc, inv) => acc + inv.purchasePrice * inv.quantity, 0)
+  }, [investments])
+
+  const currentValue = useMemo(() => {
+    return investments.reduce((acc, inv) => acc + calculateCurrentValue(inv) * inv.quantity, 0)
+  }, [investments, settings.ipcaAverage24m])
+
+  const portfolioYield =
+    totalInvested > 0 ? ((currentValue - totalInvested) / totalInvested) * 100 : 0
+  const projectedInterestYear = currentValue * 0.085 // Mock 8.5% average annual yield
+
+  return React.createElement(
+    PortfolioContext.Provider,
+    {
+      value: {
+        investments,
+        settings,
+        addInvestment,
+        updateInvestment,
+        deleteInvestment,
+        importInvestments,
+        updateSettings,
+        totalInvested,
+        currentValue,
+        projectedInterestYear,
+        portfolioYield,
+      },
+    },
+    children,
+  )
+}
+
+export default function usePortfolioStore() {
+  const context = useContext(PortfolioContext)
+  if (!context) {
+    throw new Error('usePortfolioStore must be used within a PortfolioProvider')
+  }
+  return context
+}

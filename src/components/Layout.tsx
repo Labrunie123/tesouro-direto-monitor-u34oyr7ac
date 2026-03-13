@@ -1,13 +1,123 @@
-/* Layout Component - A component that wraps the main content of the app
-   - Use this file to add a header, footer, or other elements that should be present on every page
-   - This component is used in the App.tsx file to wrap the main content of the app */
+import React from 'react'
+import { Outlet, Link, useLocation } from 'react-router-dom'
+import {
+  LayoutDashboard,
+  Wallet,
+  TrendingUp,
+  BarChart3,
+  Download,
+  Plus,
+  Settings,
+} from 'lucide-react'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+  SidebarProvider,
+  SidebarTrigger,
+  SidebarInset,
+  SidebarFooter,
+} from '@/components/ui/sidebar'
+import { Button } from '@/components/ui/button'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import usePortfolioStore from '@/stores/usePortfolioStore'
+import { formatDate } from '@/lib/formatters'
 
-import { Outlet } from 'react-router-dom'
+const navItems = [
+  { title: 'Dashboard', icon: LayoutDashboard, path: '/' },
+  { title: 'Minha Carteira', icon: Wallet, path: '/portfolio' },
+  { title: 'Projeções', icon: TrendingUp, path: '/projections' },
+  { title: 'Benchmarks', icon: BarChart3, path: '/benchmarks' },
+  { title: 'Importar Dados', icon: Download, path: '/import' },
+]
 
 export default function Layout() {
+  const location = useLocation()
+  const { settings } = usePortfolioStore()
+
   return (
-    <main className="flex flex-col min-h-screen">
-      <Outlet />
-    </main>
+    <SidebarProvider>
+      <div className="flex min-h-screen w-full bg-background text-foreground font-sans">
+        <Sidebar variant="inset" className="border-r border-border/50">
+          <SidebarHeader className="flex flex-row items-center gap-2 p-4 pt-6">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <TrendingUp className="h-5 w-5" />
+            </div>
+            <span className="text-xl font-bold tracking-tight text-primary">TesouroVision</span>
+          </SidebarHeader>
+          <SidebarContent className="px-2 mt-4">
+            <SidebarMenu>
+              {navItems.map((item) => (
+                <SidebarMenuItem key={item.path}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={location.pathname === item.path}
+                    className="h-11 rounded-lg px-4"
+                  >
+                    <Link to={item.path} className="flex items-center gap-3">
+                      <item.icon className="h-5 w-5" />
+                      <span className="font-medium">{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarContent>
+          <SidebarFooter className="p-4 border-t border-border/50">
+            <div className="flex items-center gap-3 px-2">
+              <Avatar className="h-9 w-9 border border-border">
+                <AvatarImage src="https://img.usecurling.com/ppl/thumbnail?gender=male&seed=42" />
+                <AvatarFallback>JD</AvatarFallback>
+              </Avatar>
+              <div className="flex flex-col">
+                <span className="text-sm font-semibold">João Silva</span>
+                <span className="text-xs text-muted-foreground">Investidor Plus</span>
+              </div>
+            </div>
+          </SidebarFooter>
+        </Sidebar>
+
+        <SidebarInset className="flex w-full flex-1 flex-col overflow-hidden bg-muted/20">
+          <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm md:px-8">
+            <SidebarTrigger className="-ml-1" />
+            <div className="flex flex-1 items-center justify-between">
+              <div className="flex items-center gap-4 ml-2">
+                <h1 className="text-lg font-semibold hidden sm:block">
+                  {navItems.find((i) => i.path === location.pathname)?.title || 'Visão Geral'}
+                </h1>
+                <div className="hidden items-center gap-1.5 rounded-full bg-secondary/50 px-3 py-1 text-xs font-medium text-muted-foreground md:flex">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  VNA Atualizado: {formatDate(settings.lastSync)}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" className="hidden md:flex gap-2" asChild>
+                  <Link to="/import">
+                    <Settings className="h-4 w-4" />
+                    Ajustes
+                  </Link>
+                </Button>
+                <Button size="sm" className="gap-2 shadow-sm" asChild>
+                  <Link to="/portfolio">
+                    <Plus className="h-4 w-4" />
+                    <span className="hidden sm:inline">Adicionar Título</span>
+                    <span className="sm:hidden">Novo</span>
+                  </Link>
+                </Button>
+              </div>
+            </div>
+          </header>
+          <main className="flex-1 overflow-y-auto p-4 md:p-8 animate-fade-in">
+            <Outlet />
+          </main>
+        </SidebarInset>
+      </div>
+    </SidebarProvider>
   )
 }
