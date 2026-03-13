@@ -13,7 +13,15 @@ import {
   YAxis,
   CartesianGrid,
 } from 'recharts'
-import { ArrowUpRight, Wallet, Percent, PieChart as PieChartIcon, Activity } from 'lucide-react'
+import {
+  ArrowUpRight,
+  Wallet,
+  Percent,
+  PieChart as PieChartIcon,
+  Activity,
+  FileText,
+  Calculator,
+} from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart'
 import { Button } from '@/components/ui/button'
@@ -63,6 +71,27 @@ export default function Index() {
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-2">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Dashboard</h2>
+          <p className="text-muted-foreground">Acompanhamento consolidado da sua carteira.</p>
+        </div>
+        <div className="flex gap-2">
+          <Button asChild variant="secondary" className="gap-2">
+            <Link to="/simulator">
+              <Calculator className="h-4 w-4" />
+              Simulador
+            </Link>
+          </Button>
+          <Button asChild className="gap-2">
+            <Link to="/report" target="_blank">
+              <FileText className="h-4 w-4" />
+              Gerar Relatório PDF
+            </Link>
+          </Button>
+        </div>
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card
           className="hover:shadow-md transition-shadow animate-fade-in-up"

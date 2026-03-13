@@ -2,7 +2,8 @@ import React, { useState } from 'react'
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Plus, Download, Edit2, Trash2, ArrowUpDown } from 'lucide-react'
+import { Plus, Download, Edit2, Trash2, ArrowUpDown, FileText } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import {
   Table,
   TableBody,
@@ -14,6 +15,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -46,15 +48,23 @@ const formSchema = z.object({
   title: z.string().min(3, 'Título muito curto'),
   agent: z.string().min(2, 'Informe a corretora'),
   purchaseDate: z.string().min(1, 'Data obrigatória'),
+  maturityDate: z.string().optional(),
   quantity: z.coerce.number().positive('Quantidade deve ser > 0'),
   purchasePrice: z.coerce.number().positive('Preço deve ser > 0'),
   rate: z.coerce.number().nonnegative('Taxa inválida'),
   type: z.enum(['IPCA+', 'Selic', 'Prefixado', 'Renda+', 'Educa+'] as const),
+  hasSemiannualCoupon: z.boolean().default(false),
 })
 
 export default function Portfolio() {
-  const { investments, addInvestment, updateInvestment, deleteInvestment, settings } =
-    usePortfolioStore()
+  const {
+    investments,
+    addInvestment,
+    updateInvestment,
+    deleteInvestment,
+    settings,
+    calculateCurrentValue,
+  } = usePortfolioStore()
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [isDeleteOpen, setIsDeleteOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -67,36 +77,35 @@ export default function Portfolio() {
       title: '',
       agent: '',
       purchaseDate: '',
+      maturityDate: '',
       quantity: 1,
       purchasePrice: 0,
       rate: 0,
       type: 'IPCA+',
+      hasSemiannualCoupon: false,
     },
   })
-
-  const calculateVNA = (inv: Investment) => {
-    const years = Math.max(
-      0,
-      (new Date().getTime() - new Date(inv.purchaseDate).getTime()) / (1000 * 60 * 60 * 24 * 365),
-    )
-    const r = inv.type === 'Prefixado' ? inv.rate / 100 : (inv.rate + settings.ipcaAverage24m) / 100
-    return inv.purchasePrice * Math.pow(1 + r, years)
-  }
 
   const handleOpenForm = (inv?: Investment) => {
     if (inv) {
       setEditingId(inv.id)
-      form.reset({ ...inv })
+      form.reset({
+        ...inv,
+        hasSemiannualCoupon: inv.hasSemiannualCoupon || false,
+        maturityDate: inv.maturityDate || '',
+      })
     } else {
       setEditingId(null)
       form.reset({
         title: '',
         agent: '',
         purchaseDate: new Date().toISOString().split('T')[0],
+        maturityDate: '',
         quantity: 1,
         purchasePrice: 0,
         rate: 0,
         type: 'IPCA+',
+        hasSemiannualCoupon: false,
       })
     }
     setIsFormOpen(true)
@@ -122,10 +131,12 @@ export default function Portfolio() {
   }
 
   const exportCSV = () => {
-    const headers = ['Título,Corretora,Data Compra,Qtd,Preço Compra,Taxa(%),VNA Atual,Total Atual']
+    const headers = [
+      'Título,Corretora,Data Compra,Vencimento,Semestral,Qtd,Preço Compra,Taxa(%),VNA Atual,Total Atual',
+    ]
     const rows = investments.map((i) => {
-      const vna = calculateVNA(i)
-      return `${i.title},${i.agent},${i.purchaseDate},${i.quantity},${i.purchasePrice},${i.rate},${vna.toFixed(2)},${(vna * i.quantity).toFixed(2)}`
+      const vna = calculateCurrentValue(i)
+      return `${i.title},${i.agent},${i.purchaseDate},${i.maturityDate || '-'},${i.hasSemiannualCoupon ? 'Sim' : 'Não'},${i.quantity},${i.purchasePrice},${i.rate},${vna.toFixed(2)},${(vna * i.quantity).toFixed(2)}`
     })
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers, ...rows].join('\n')
     const encodedUri = encodeURI(csvContent)
@@ -145,13 +156,20 @@ export default function Portfolio() {
           <p className="text-muted-foreground">Gerencie seus títulos do Tesouro Direto.</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={exportCSV}>
+          <Button variant="outline" onClick={exportCSV} className="hidden md:flex">
             <Download className="mr-2 h-4 w-4" />
-            Exportar CSV
+            CSV
+          </Button>
+          <Button variant="outline" asChild>
+            <Link to="/report" target="_blank">
+              <FileText className="mr-2 h-4 w-4" />
+              PDF
+            </Link>
           </Button>
           <Button onClick={() => handleOpenForm()}>
             <Plus className="mr-2 h-4 w-4" />
-            Adicionar Título
+            <span className="hidden sm:inline">Adicionar Título</span>
+            <span className="sm:hidden">Novo</span>
           </Button>
         </div>
       </div>
@@ -189,7 +207,7 @@ export default function Portfolio() {
                 </TableRow>
               ) : (
                 investments.map((inv) => {
-                  const vna = calculateVNA(inv)
+                  const vna = calculateCurrentValue(inv)
                   const total = vna * inv.quantity
                   return (
                     <TableRow key={inv.id} className="group">
@@ -316,6 +334,32 @@ export default function Portfolio() {
                 />
                 <FormField
                   control={form.control}
+                  name="maturityDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Data de Vencimento (Opcional)</FormLabel>
+                      <FormControl>
+                        <Input type="date" {...field} value={field.value || ''} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="rate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Taxa Acordada (%)</FormLabel>
+                      <FormControl>
+                        <Input type="number" step="0.01" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
                   name="quantity"
                   render={({ field }) => (
                     <FormItem>
@@ -342,14 +386,18 @@ export default function Portfolio() {
                 />
                 <FormField
                   control={form.control}
-                  name="rate"
+                  name="hasSemiannualCoupon"
                   render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Taxa Acordada (%)</FormLabel>
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 col-span-full mt-2">
                       <FormControl>
-                        <Input type="number" step="0.01" {...field} />
+                        <Checkbox checked={field.value} onCheckedChange={field.onChange} />
                       </FormControl>
-                      <FormMessage />
+                      <div className="space-y-1 leading-none">
+                        <FormLabel>Paga Juros Semestrais?</FormLabel>
+                        <p className="text-xs text-muted-foreground">
+                          Habilita notificações automáticas de pagamento de cupons.
+                        </p>
+                      </div>
                     </FormItem>
                   )}
                 />

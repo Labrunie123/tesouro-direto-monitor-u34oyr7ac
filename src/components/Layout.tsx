@@ -8,6 +8,8 @@ import {
   Download,
   Plus,
   Settings,
+  Calculator,
+  Bell,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -21,22 +23,26 @@ import {
   SidebarInset,
   SidebarFooter,
 } from '@/components/ui/sidebar'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import usePortfolioStore from '@/stores/usePortfolioStore'
 import { formatDate } from '@/lib/formatters'
+import { cn } from '@/lib/utils'
 
 const navItems = [
   { title: 'Dashboard', icon: LayoutDashboard, path: '/' },
   { title: 'Minha Carteira', icon: Wallet, path: '/portfolio' },
   { title: 'Projeções', icon: TrendingUp, path: '/projections' },
   { title: 'Benchmarks', icon: BarChart3, path: '/benchmarks' },
+  { title: 'Simulador', icon: Calculator, path: '/simulator' },
   { title: 'Importar Dados', icon: Download, path: '/import' },
 ]
 
 export default function Layout() {
   const location = useLocation()
-  const { settings } = usePortfolioStore()
+  const { settings, notifications } = usePortfolioStore()
 
   return (
     <SidebarProvider>
@@ -97,6 +103,54 @@ export default function Layout() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="ghost" size="icon" className="relative mr-2">
+                      <Bell className="h-5 w-5" />
+                      {notifications.length > 0 && (
+                        <Badge
+                          variant="destructive"
+                          className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-[10px] rounded-full"
+                        >
+                          {notifications.length}
+                        </Badge>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-80">
+                    <div className="space-y-2">
+                      <h4 className="font-medium text-sm">Notificações Inteligentes</h4>
+                      {notifications.length === 0 ? (
+                        <p className="text-sm text-muted-foreground mt-2">
+                          Nenhuma notificação pendente.
+                        </p>
+                      ) : (
+                        <div className="space-y-3 mt-4">
+                          {notifications.map((n) => (
+                            <div
+                              key={n.id}
+                              className="flex flex-col gap-1 border-b border-border/50 pb-3 last:border-0 last:pb-0"
+                            >
+                              <span className="text-sm font-medium flex items-center gap-2">
+                                <span
+                                  className={cn(
+                                    'h-2 w-2 rounded-full shrink-0',
+                                    n.type === 'maturity' ? 'bg-destructive' : 'bg-primary',
+                                  )}
+                                />
+                                {n.title}
+                              </span>
+                              <span className="text-xs text-muted-foreground ml-4">
+                                {n.message}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+
                 <Button size="sm" variant="outline" className="hidden md:flex gap-2" asChild>
                   <Link to="/import">
                     <Settings className="h-4 w-4" />

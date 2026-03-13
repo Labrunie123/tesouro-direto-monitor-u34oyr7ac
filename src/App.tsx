@@ -8,6 +8,8 @@ import Portfolio from './pages/Portfolio'
 import Projections from './pages/Projections'
 import Benchmarks from './pages/Benchmarks'
 import Import from './pages/Import'
+import Simulator from './pages/Simulator'
+import Report from './pages/Report'
 import NotFound from './pages/NotFound'
 import { PortfolioProvider } from './stores/usePortfolioStore'
 
@@ -23,8 +25,10 @@ const App = () => (
             <Route path="/portfolio" element={<Portfolio />} />
             <Route path="/projections" element={<Projections />} />
             <Route path="/benchmarks" element={<Benchmarks />} />
+            <Route path="/simulator" element={<Simulator />} />
             <Route path="/import" element={<Import />} />
           </Route>
+          <Route path="/report" element={<Report />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </TooltipProvider>

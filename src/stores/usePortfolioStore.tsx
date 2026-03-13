@@ -7,10 +7,20 @@ export interface Investment {
   title: string
   agent: string
   purchaseDate: string
+  maturityDate?: string
   quantity: number
   purchasePrice: number
   rate: number
   type: BondType
+  hasSemiannualCoupon?: boolean
+}
+
+export interface Notification {
+  id: string
+  title: string
+  message: string
+  type: 'maturity' | 'coupon'
+  date: string
 }
 
 interface PortfolioState {
@@ -24,12 +34,17 @@ interface PortfolioState {
   deleteInvestment: (id: string) => void
   importInvestments: (invs: Omit<Investment, 'id'>[]) => void
   updateSettings: (settings: Partial<PortfolioState['settings']>) => void
-  // Derived
   totalInvested: number
   currentValue: number
   projectedInterestYear: number
   portfolioYield: number
+  notifications: Notification[]
+  calculateCurrentValue: (inv: Investment) => number
 }
+
+const now = new Date()
+const currentMonth = (now.getMonth() + 1).toString().padStart(2, '0')
+const next15Days = new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
 const INITIAL_MOCK_DATA: Investment[] = [
   {
@@ -37,6 +52,7 @@ const INITIAL_MOCK_DATA: Investment[] = [
     title: 'Tesouro IPCA+ 2045',
     agent: 'XP Investimentos',
     purchaseDate: '2023-01-15',
+    maturityDate: '2045-05-15',
     quantity: 15,
     purchasePrice: 1200.5,
     rate: 5.5,
@@ -47,6 +63,7 @@ const INITIAL_MOCK_DATA: Investment[] = [
     title: 'Tesouro Selic 2029',
     agent: 'NuInvest',
     purchaseDate: '2023-06-20',
+    maturityDate: '2029-03-01',
     quantity: 5,
     purchasePrice: 13500.0,
     rate: 0.1,
@@ -57,30 +74,34 @@ const INITIAL_MOCK_DATA: Investment[] = [
     title: 'Tesouro Renda+ 2030',
     agent: 'BTG Pactual',
     purchaseDate: '2024-02-10',
+    maturityDate: '2030-01-15',
     quantity: 100,
     purchasePrice: 500.0,
     rate: 6.0,
     type: 'Renda+',
   },
   {
-    id: '4',
-    title: 'Tesouro Prefixado 2027',
-    agent: 'Itaú Corretora',
-    purchaseDate: '2022-11-05',
-    quantity: 30,
-    purchasePrice: 750.2,
-    rate: 10.5,
+    id: '6',
+    title: 'Tesouro Prefixado Curto',
+    agent: 'Órama',
+    purchaseDate: '2021-05-10',
+    maturityDate: next15Days,
+    quantity: 10,
+    purchasePrice: 950.0,
+    rate: 11.5,
     type: 'Prefixado',
   },
   {
-    id: '5',
-    title: 'Tesouro Educa+ 2035',
-    agent: 'XP Investimentos',
-    purchaseDate: '2024-01-25',
-    quantity: 50,
-    purchasePrice: 620.3,
+    id: '7',
+    title: 'Tesouro IPCA+ Juros Semestrais',
+    agent: 'BTG Pactual',
+    purchaseDate: '2022-03-15',
+    maturityDate: `2055-${currentMonth}-15`,
+    quantity: 20,
+    purchasePrice: 4000.0,
     rate: 5.8,
-    type: 'Educa+',
+    type: 'IPCA+',
+    hasSemiannualCoupon: true,
   },
 ]
 
@@ -99,6 +120,60 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     localStorage.setItem('@tesouro-vision:investments', JSON.stringify(investments))
+  }, [investments])
+
+  useEffect(() => {
+    let mounted = true
+    const autoSyncVNA = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+      if (mounted) {
+        setSettings((prev) => ({
+          ...prev,
+          lastSync: new Date().toISOString(),
+          ipcaAverage24m: 4.62,
+        }))
+      }
+    }
+    autoSyncVNA()
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  const notifications = useMemo(() => {
+    const notifs: Notification[] = []
+    const today = new Date()
+    investments.forEach((inv) => {
+      if (inv.maturityDate) {
+        const matDate = new Date(inv.maturityDate)
+        const diffTime = matDate.getTime() - today.getTime()
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+        if (diffDays >= 0 && diffDays <= 30) {
+          notifs.push({
+            id: `mat-${inv.id}`,
+            title: 'Vencimento Próximo',
+            message: `${inv.title} (${inv.agent}) vence em ${diffDays} dias.`,
+            type: 'maturity',
+            date: inv.maturityDate,
+          })
+        }
+      }
+      if (inv.hasSemiannualCoupon && inv.maturityDate) {
+        const matDate = new Date(inv.maturityDate)
+        const m1 = matDate.getMonth()
+        const m2 = (m1 + 6) % 12
+        if (today.getMonth() === m1 || today.getMonth() === m2) {
+          notifs.push({
+            id: `coup-${inv.id}`,
+            title: 'Pagamento de Cupom',
+            message: `${inv.title} (${inv.agent}) pagará juros este mês.`,
+            type: 'coupon',
+            date: today.toISOString(),
+          })
+        }
+      }
+    })
+    return notifs
   }, [investments])
 
   const addInvestment = (inv: Omit<Investment, 'id'>) => {
@@ -122,7 +197,6 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     setSettings((prev) => ({ ...prev, ...newSettings }))
   }
 
-  // Simplified VNA Mock Calculation
   const calculateCurrentValue = (inv: Investment) => {
     const purchaseDate = new Date(inv.purchaseDate)
     const today = new Date()
@@ -145,7 +219,7 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
 
   const portfolioYield =
     totalInvested > 0 ? ((currentValue - totalInvested) / totalInvested) * 100 : 0
-  const projectedInterestYear = currentValue * 0.085 // Mock 8.5% average annual yield
+  const projectedInterestYear = currentValue * 0.085
 
   return React.createElement(
     PortfolioContext.Provider,
@@ -162,6 +236,8 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
         currentValue,
         projectedInterestYear,
         portfolioYield,
+        notifications,
+        calculateCurrentValue,
       },
     },
     children,
