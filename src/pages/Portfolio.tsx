@@ -20,6 +20,7 @@ import usePortfolioStore, { Investment, YieldPeriod } from '@/stores/usePortfoli
 import { PortfolioTable } from '@/components/portfolio/PortfolioTable'
 import { PortfolioFormDialog } from '@/components/portfolio/PortfolioFormDialog'
 import { MtmAnalysisDialog } from '@/components/portfolio/MtmAnalysisDialog'
+import { NextCouponWidget } from '@/components/portfolio/NextCouponWidget'
 
 export default function Portfolio() {
   const {
@@ -124,6 +125,8 @@ export default function Portfolio() {
           </Button>
         </div>
       </div>
+
+      <NextCouponWidget />
 
       <PortfolioTable
         onEdit={handleOpenEdit}

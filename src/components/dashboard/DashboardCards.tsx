@@ -47,43 +47,46 @@ export function DashboardCards() {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
-    // First pass: identify the closest chronological date
-    investments.forEach((inv) => {
-      if (inv.hasSemiannualCoupon) {
-        let pDate = new Date(inv.purchaseDate)
-        pDate.setHours(0, 0, 0, 0)
-        while (pDate < today) {
-          pDate.setMonth(pDate.getMonth() + 6)
-        }
-        if (!nextDate || pDate < nextDate) {
-          nextDate = new Date(pDate)
-        }
+    const eligibleInvestments = investments.filter(
+      (inv) => (inv.type === 'IPCA+' || inv.type === 'Prefixado') && inv.hasSemiannualCoupon,
+    )
+
+    if (eligibleInvestments.length === 0) return null
+
+    // First pass: identify the closest chronological future date
+    eligibleInvestments.forEach((inv) => {
+      let pDate = new Date(inv.purchaseDate)
+      pDate.setHours(0, 0, 0, 0)
+      while (pDate < today) {
+        pDate.setMonth(pDate.getMonth() + 6)
+      }
+      if (!nextDate || pDate < nextDate) {
+        nextDate = new Date(pDate)
       }
     })
 
     if (!nextDate) return null
 
     // Second pass: sum the net amounts for all titles paying on that date
-    investments.forEach((inv) => {
-      if (inv.hasSemiannualCoupon) {
-        let pDate = new Date(inv.purchaseDate)
-        pDate.setHours(0, 0, 0, 0)
-        while (pDate < today) {
-          pDate.setMonth(pDate.getMonth() + 6)
-        }
+    eligibleInvestments.forEach((inv) => {
+      let pDate = new Date(inv.purchaseDate)
+      pDate.setHours(0, 0, 0, 0)
+      while (pDate < today) {
+        pDate.setMonth(pDate.getMonth() + 6)
+      }
 
-        if (pDate.getTime() === nextDate!.getTime()) {
-          const grossAmount = inv.purchasePrice * inv.quantity * (inv.rate / 200)
-          const purchaseTime = new Date(inv.purchaseDate).getTime()
-          const daysElapsed = Math.floor((pDate.getTime() - purchaseTime) / 86400000)
+      if (pDate.getTime() === nextDate!.getTime()) {
+        const grossAmount = inv.purchasePrice * inv.quantity * (inv.rate / 200)
+        const purchaseTime = new Date(inv.purchaseDate).getTime()
+        const daysElapsed = Math.floor((pDate.getTime() - purchaseTime) / 86400000)
 
-          let taxRate = 0.15
-          if (daysElapsed <= 180) taxRate = 0.225
-          else if (daysElapsed <= 360) taxRate = 0.2
-          else if (daysElapsed <= 720) taxRate = 0.175
+        // Regressive IR logic
+        let taxRate = 0.15
+        if (daysElapsed <= 180) taxRate = 0.225
+        else if (daysElapsed <= 360) taxRate = 0.2
+        else if (daysElapsed <= 720) taxRate = 0.175
 
-          netAmount += grossAmount * (1 - taxRate)
-        }
+        netAmount += grossAmount * (1 - taxRate)
       }
     })
 
