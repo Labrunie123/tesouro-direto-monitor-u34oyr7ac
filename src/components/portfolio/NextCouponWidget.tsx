@@ -21,8 +21,10 @@ export function NextCouponWidget() {
 
     // First pass: identify the closest chronological future date
     eligibleInvestments.forEach((inv) => {
-      let pDate = new Date(inv.purchaseDate)
+      const [year, month, day] = inv.purchaseDate.split('T')[0].split('-').map(Number)
+      const pDate = new Date(year, month - 1, day)
       pDate.setHours(0, 0, 0, 0)
+
       while (pDate < today) {
         pDate.setMonth(pDate.getMonth() + 6)
       }
@@ -35,15 +37,17 @@ export function NextCouponWidget() {
 
     // Second pass: sum the net amounts for all titles paying on that exact date
     eligibleInvestments.forEach((inv) => {
-      let pDate = new Date(inv.purchaseDate)
+      const [year, month, day] = inv.purchaseDate.split('T')[0].split('-').map(Number)
+      const pDate = new Date(year, month - 1, day)
       pDate.setHours(0, 0, 0, 0)
+
       while (pDate < today) {
         pDate.setMonth(pDate.getMonth() + 6)
       }
 
       if (pDate.getTime() === nextDate!.getTime()) {
         const grossAmount = inv.purchasePrice * inv.quantity * (inv.rate / 200)
-        const purchaseTime = new Date(inv.purchaseDate).getTime()
+        const purchaseTime = new Date(year, month - 1, day).getTime()
         const daysElapsed = Math.floor((pDate.getTime() - purchaseTime) / 86400000)
 
         // Regressive IR logic

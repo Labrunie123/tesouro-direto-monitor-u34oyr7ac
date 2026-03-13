@@ -46,9 +46,8 @@ export function DashboardCharts() {
     const groups: Record<string, number> = {
       'Pós-fixados': 0,
       'Pré-fixados': 0,
-      'Pré-fixados c/ Juros Semestrais': 0,
-      'IPCA+': 0,
-      'IPCA+ c/ Juros Semestrais': 0,
+      'IPCA com juros semestrais': 0,
+      'IPCA sem semestrais': 0,
       'Renda+': 0,
       'Educa+': 0,
     }
@@ -58,11 +57,13 @@ export function DashboardCharts() {
       if (inv.type === 'Selic') {
         groups['Pós-fixados'] += val
       } else if (inv.type === 'Prefixado') {
-        if (inv.hasSemiannualCoupon) groups['Pré-fixados c/ Juros Semestrais'] += val
-        else groups['Pré-fixados'] += val
+        groups['Pré-fixados'] += val
       } else if (inv.type === 'IPCA+') {
-        if (inv.hasSemiannualCoupon) groups['IPCA+ c/ Juros Semestrais'] += val
-        else groups['IPCA+'] += val
+        if (inv.hasSemiannualCoupon) {
+          groups['IPCA com juros semestrais'] += val
+        } else {
+          groups['IPCA sem semestrais'] += val
+        }
       } else if (inv.type === 'Renda+') {
         groups['Renda+'] += val
       } else if (inv.type === 'Educa+') {
