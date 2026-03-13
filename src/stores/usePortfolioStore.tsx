@@ -42,10 +42,7 @@ export interface Dividend {
 
 interface PortfolioState {
   investments: Investment[]
-  settings: {
-    lastSync: string
-    ipcaAverage24m: number
-  }
+  settings: { lastSync: string; ipcaAverage24m: number }
   yieldPeriod: YieldPeriod
   brokers: BrokerConnection[]
   dividends: Dividend[]
@@ -82,6 +79,17 @@ const INITIAL_MOCK_DATA: Investment[] = [
     type: 'IPCA+',
   },
   {
+    id: '1-lot2',
+    title: 'Tesouro IPCA+ 2045',
+    agent: 'XP Investimentos',
+    purchaseDate: '2024-05-10',
+    maturityDate: '2045-05-15',
+    quantity: 5,
+    purchasePrice: 1250.0,
+    rate: 6.1,
+    type: 'IPCA+',
+  },
+  {
     id: '2',
     title: 'Tesouro Selic 2029',
     agent: 'NuInvest',
@@ -114,39 +122,21 @@ const INITIAL_MOCK_DATA: Investment[] = [
     rate: 11.5,
     type: 'Prefixado',
   },
-  {
-    id: '7',
-    title: 'Tesouro IPCA+ Juros Semestrais',
-    agent: 'BTG Pactual',
-    purchaseDate: '2022-03-15',
-    maturityDate: `2055-${currentMonth}-15`,
-    quantity: 20,
-    purchasePrice: 4000.0,
-    rate: 5.8,
-    type: 'IPCA+',
-    hasSemiannualCoupon: true,
-  },
 ]
 
 const INITIAL_BROKERS: BrokerConnection[] = [
   {
     id: 'b1',
-    name: 'XP Investimentos',
+    name: 'XP',
     status: 'disconnected',
     logo: 'https://img.usecurling.com/i?q=investment&color=black&shape=fill',
   },
   {
     id: 'b2',
-    name: 'BTG Pactual',
+    name: 'BTG',
     status: 'connected',
     lastSync: new Date().toISOString(),
     logo: 'https://img.usecurling.com/i?q=bank&color=blue&shape=fill',
-  },
-  {
-    id: 'b3',
-    name: 'NuInvest',
-    status: 'disconnected',
-    logo: 'https://img.usecurling.com/i?q=finance&color=purple&shape=fill',
   },
 ]
 
@@ -162,9 +152,7 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     lastSync: new Date().toISOString(),
     ipcaAverage24m: 4.5,
   })
-
   const [yieldPeriod, setYieldPeriod] = useState<YieldPeriod>('all')
-
   const [brokers, setBrokers] = useState<BrokerConnection[]>(INITIAL_BROKERS)
 
   const dividends = useMemo(() => {
@@ -178,7 +166,7 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
           data.push({
             id: crypto.randomUUID(),
             date: paymentDate.toISOString().split('T')[0],
-            amount: inv.purchasePrice * inv.quantity * (inv.rate / 200), // mock half year
+            amount: inv.purchasePrice * inv.quantity * (inv.rate / 200),
             title: inv.title,
             agent: inv.agent,
           })
@@ -189,27 +177,10 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     return data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
   }, [investments])
 
-  useEffect(() => {
-    localStorage.setItem('@tesouro-vision:investments', JSON.stringify(investments))
-  }, [investments])
-
-  useEffect(() => {
-    let mounted = true
-    const autoSyncVNA = async () => {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-      if (mounted) {
-        setSettings((prev) => ({
-          ...prev,
-          lastSync: new Date().toISOString(),
-          ipcaAverage24m: 4.62,
-        }))
-      }
-    }
-    autoSyncVNA()
-    return () => {
-      mounted = false
-    }
-  }, [])
+  useEffect(
+    () => localStorage.setItem('@tesouro-vision:investments', JSON.stringify(investments)),
+    [investments],
+  )
 
   const notifications = useMemo(() => {
     const notifs: Notification[] = []
@@ -217,29 +188,14 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     investments.forEach((inv) => {
       if (inv.maturityDate) {
         const matDate = new Date(inv.maturityDate)
-        const diffTime = matDate.getTime() - today.getTime()
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+        const diffDays = Math.ceil((matDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
         if (diffDays >= 0 && diffDays <= 30) {
           notifs.push({
             id: `mat-${inv.id}`,
             title: 'Vencimento Próximo',
-            message: `${inv.title} (${inv.agent}) vence em ${diffDays} dias.`,
+            message: `${inv.title} vence em ${diffDays} dias.`,
             type: 'maturity',
             date: inv.maturityDate,
-          })
-        }
-      }
-      if (inv.hasSemiannualCoupon && inv.maturityDate) {
-        const matDate = new Date(inv.maturityDate)
-        const m1 = matDate.getMonth()
-        const m2 = (m1 + 6) % 12
-        if (today.getMonth() === m1 || today.getMonth() === m2) {
-          notifs.push({
-            id: `coup-${inv.id}`,
-            title: 'Pagamento de Cupom',
-            message: `${inv.title} (${inv.agent}) pagará juros este mês.`,
-            type: 'coupon',
-            date: today.toISOString(),
           })
         }
       }
@@ -247,30 +203,18 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     return notifs
   }, [investments])
 
-  const addInvestment = (inv: Omit<Investment, 'id'>) => {
-    setInvestments((prev) => [...prev, { ...inv, id: crypto.randomUUID() }])
-  }
-
-  const updateInvestment = (id: string, inv: Partial<Investment>) => {
-    setInvestments((prev) => prev.map((i) => (i.id === id ? { ...i, ...inv } : i)))
-  }
-
-  const deleteInvestment = (id: string) => {
-    setInvestments((prev) => prev.filter((i) => i.id !== id))
-  }
-
-  const importInvestments = (invs: Omit<Investment, 'id'>[]) => {
-    const newInvs = invs.map((i) => ({ ...i, id: crypto.randomUUID() }))
-    setInvestments((prev) => [...prev, ...newInvs])
-  }
-
-  const updateSettings = (newSettings: Partial<PortfolioState['settings']>) => {
-    setSettings((prev) => ({ ...prev, ...newSettings }))
-  }
-
-  const toggleBroker = (id: string) => {
-    setBrokers((prev) =>
-      prev.map((b) =>
+  const addInvestment = (inv: Omit<Investment, 'id'>) =>
+    setInvestments((p) => [...p, { ...inv, id: crypto.randomUUID() }])
+  const updateInvestment = (id: string, inv: Partial<Investment>) =>
+    setInvestments((p) => p.map((i) => (i.id === id ? { ...i, ...inv } : i)))
+  const deleteInvestment = (id: string) => setInvestments((p) => p.filter((i) => i.id !== id))
+  const importInvestments = (invs: Omit<Investment, 'id'>[]) =>
+    setInvestments((p) => [...p, ...invs.map((i) => ({ ...i, id: crypto.randomUUID() }))])
+  const updateSettings = (newSettings: Partial<PortfolioState['settings']>) =>
+    setSettings((p) => ({ ...p, ...newSettings }))
+  const toggleBroker = (id: string) =>
+    setBrokers((p) =>
+      p.map((b) =>
         b.id === id
           ? {
               ...b,
@@ -280,14 +224,11 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
           : b,
       ),
     )
-  }
 
   const calculateCurrentValue = (inv: Investment) => {
-    const purchaseDate = new Date(inv.purchaseDate)
-    const today = new Date()
     const yearsElapsed = Math.max(
       0,
-      (today.getTime() - purchaseDate.getTime()) / (1000 * 60 * 60 * 24 * 365),
+      (new Date().getTime() - new Date(inv.purchaseDate).getTime()) / (1000 * 60 * 60 * 24 * 365),
     )
     const mockYieldRate =
       inv.type === 'Prefixado' ? inv.rate / 100 : (inv.rate + settings.ipcaAverage24m) / 100
@@ -302,9 +243,7 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
       (today.getFullYear() - purchaseDate.getFullYear()) * 12 +
       today.getMonth() -
       purchaseDate.getMonth()
-
     if (monthsElapsed === 0) return totalYield * 100
-
     const monthlyYield = totalYield / Math.max(1, monthsElapsed)
 
     switch (period) {
@@ -318,20 +257,19 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
         return monthlyYield * Math.min(12, monthsElapsed) * 100
       case '24m':
         return monthlyYield * Math.min(24, monthsElapsed) * 100
-      case 'all':
       default:
         return totalYield * 100
     }
   }
 
-  const totalInvested = useMemo(() => {
-    return investments.reduce((acc, inv) => acc + inv.purchasePrice * inv.quantity, 0)
-  }, [investments])
-
-  const currentValue = useMemo(() => {
-    return investments.reduce((acc, inv) => acc + calculateCurrentValue(inv) * inv.quantity, 0)
-  }, [investments, settings.ipcaAverage24m])
-
+  const totalInvested = useMemo(
+    () => investments.reduce((acc, inv) => acc + inv.purchasePrice * inv.quantity, 0),
+    [investments],
+  )
+  const currentValue = useMemo(
+    () => investments.reduce((acc, inv) => acc + calculateCurrentValue(inv) * inv.quantity, 0),
+    [investments, settings.ipcaAverage24m],
+  )
   const portfolioYield = useMemo(() => {
     if (totalInvested === 0) return 0
     let totalWeightedYield = 0
@@ -375,8 +313,6 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
 
 export default function usePortfolioStore() {
   const context = useContext(PortfolioContext)
-  if (!context) {
-    throw new Error('usePortfolioStore must be used within a PortfolioProvider')
-  }
+  if (!context) throw new Error('usePortfolioStore must be used within a PortfolioProvider')
   return context
 }
