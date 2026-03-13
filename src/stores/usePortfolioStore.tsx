@@ -55,7 +55,6 @@ interface PortfolioState {
   toggleBroker: (id: string) => void
   totalInvested: number
   currentValue: number
-  projectedInterestYear: number
   portfolioYield: number
   notifications: Notification[]
   calculateCurrentValue: (inv: Investment) => number
@@ -63,13 +62,12 @@ interface PortfolioState {
 }
 
 const now = new Date()
-const currentMonth = (now.getMonth() + 1).toString().padStart(2, '0')
 const next15Days = new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
 const INITIAL_MOCK_DATA: Investment[] = [
   {
     id: '1',
-    title: 'Tesouro IPCA+ 2045',
+    title: 'Tesouro IPCA+ com Juros Semestrais 2045',
     agent: 'XP Investimentos',
     purchaseDate: '2023-01-15',
     maturityDate: '2045-05-15',
@@ -77,10 +75,11 @@ const INITIAL_MOCK_DATA: Investment[] = [
     purchasePrice: 1200.5,
     rate: 5.5,
     type: 'IPCA+',
+    hasSemiannualCoupon: true,
   },
   {
     id: '1-lot2',
-    title: 'Tesouro IPCA+ 2045',
+    title: 'Tesouro IPCA+ com Juros Semestrais 2045',
     agent: 'XP Investimentos',
     purchaseDate: '2024-05-10',
     maturityDate: '2045-05-15',
@@ -88,6 +87,7 @@ const INITIAL_MOCK_DATA: Investment[] = [
     purchasePrice: 1250.0,
     rate: 6.1,
     type: 'IPCA+',
+    hasSemiannualCoupon: true,
   },
   {
     id: '2',
@@ -280,8 +280,6 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     return totalWeightedYield
   }, [investments, totalInvested, yieldPeriod, settings.ipcaAverage24m])
 
-  const projectedInterestYear = currentValue * 0.085
-
   return React.createElement(
     PortfolioContext.Provider,
     {
@@ -300,7 +298,6 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
         toggleBroker,
         totalInvested,
         currentValue,
-        projectedInterestYear,
         portfolioYield,
         notifications,
         calculateCurrentValue,
