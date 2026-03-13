@@ -40,11 +40,6 @@ export default function Portfolio() {
   const [analyzingId, setAnalyzingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
-  const handleOpenNew = () => {
-    setEditingLot(null)
-    setPrefillTitle(null)
-    setIsFormOpen(true)
-  }
   const handleOpenAddLot = (title: string) => {
     setEditingLot(null)
     setPrefillTitle(title)
@@ -62,30 +57,31 @@ export default function Portfolio() {
       toast({ title: 'Lote atualizado com sucesso!' })
     } else {
       addInvestment(values)
-      toast({ title: 'Novo lote adicionado com sucesso!' })
+      toast({ title: 'Novo lote adicionado!' })
     }
     setIsFormOpen(false)
   }
 
-  const confirmDelete = () => {
-    if (deletingId) {
-      deleteInvestment(deletingId)
-      toast({ title: 'Lote removido.', variant: 'destructive' })
-      setDeletingId(null)
-    }
-  }
-
   const exportCSV = () => {
     const headers = [
-      'Título,Corretora,Data Compra,Qtd,Preço Compra,Taxa(%),VNA Atual,Total Atual,Yield',
+      'Título,Corretora,Data Compra,Qtd,Preço Compra,Taxa(%),Valor Inicial,VNA Bruto,Alíquota IR(%),Valor Líquido,Yield(%)',
     ]
-    const rows = investments.map((i) => {
-      const vna = calculateCurrentValue(i)
-      return `${i.title},${i.agent},${i.purchaseDate},${i.quantity},${i.purchasePrice},${i.rate},${vna.toFixed(2)},${(vna * i.quantity).toFixed(2)},${getYieldForPeriod(i, yieldPeriod).toFixed(2)}`
+    const rows = investments.map((lot) => {
+      const vna = calculateCurrentValue(lot),
+        iv = lot.purchasePrice * lot.quantity,
+        gv = vna * lot.quantity
+      const days = Math.floor(
+        (new Date().getTime() - new Date(lot.purchaseDate).getTime()) / 86400000,
+      )
+      const tr = days <= 180 ? 0.225 : days <= 360 ? 0.2 : days <= 720 ? 0.175 : 0.15
+      const profit = gv - iv,
+        tax = profit > 0 ? profit * tr : 0,
+        nv = gv - tax
+      return `${lot.title},${lot.agent},${lot.purchaseDate},${lot.quantity},${lot.purchasePrice},${lot.rate},${iv.toFixed(2)},${gv.toFixed(2)},${(tr * 100).toFixed(2)},${nv.toFixed(2)},${getYieldForPeriod(lot, yieldPeriod).toFixed(2)}`
     })
     const link = document.createElement('a')
     link.href = encodeURI('data:text/csv;charset=utf-8,' + [headers, ...rows].join('\n'))
-    link.download = 'minha_carteira_tesouro.csv'
+    link.download = 'minha_carteira.csv'
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -115,7 +111,13 @@ export default function Portfolio() {
           <Button variant="outline" onClick={exportCSV} className="hidden md:flex">
             <Download className="mr-2 h-4 w-4" /> CSV
           </Button>
-          <Button onClick={handleOpenNew}>
+          <Button
+            onClick={() => {
+              setEditingLot(null)
+              setPrefillTitle(null)
+              setIsFormOpen(true)
+            }}
+          >
             <Plus className="mr-2 h-4 w-4" />
             <span className="hidden sm:inline">Adicionar Título</span>
             <span className="sm:hidden">Novo</span>
@@ -151,7 +153,16 @@ export default function Portfolio() {
             <Button variant="outline" onClick={() => setDeletingId(null)}>
               Cancelar
             </Button>
-            <Button variant="destructive" onClick={confirmDelete}>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (deletingId) {
+                  deleteInvestment(deletingId)
+                  toast({ title: 'Lote removido.', variant: 'destructive' })
+                  setDeletingId(null)
+                }
+              }}
+            >
               Excluir
             </Button>
           </DialogFooter>
