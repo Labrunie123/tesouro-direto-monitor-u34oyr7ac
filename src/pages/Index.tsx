@@ -16,6 +16,7 @@ import {
 import { ArrowUpRight, Wallet, Percent, PieChart as PieChartIcon, Activity } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart'
+import { Button } from '@/components/ui/button'
 import usePortfolioStore from '@/stores/usePortfolioStore'
 import { formatCurrency, formatPercent, formatDate } from '@/lib/formatters'
 
