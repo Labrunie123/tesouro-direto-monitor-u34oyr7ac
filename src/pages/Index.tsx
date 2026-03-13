@@ -25,12 +25,26 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart'
 import { Button } from '@/components/ui/button'
-import usePortfolioStore from '@/stores/usePortfolioStore'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import usePortfolioStore, { YieldPeriod } from '@/stores/usePortfolioStore'
 import { formatCurrency, formatPercent, formatDate } from '@/lib/formatters'
 
 export default function Index() {
-  const { investments, totalInvested, currentValue, projectedInterestYear, portfolioYield } =
-    usePortfolioStore()
+  const {
+    investments,
+    totalInvested,
+    currentValue,
+    projectedInterestYear,
+    portfolioYield,
+    yieldPeriod,
+    setYieldPeriod,
+  } = usePortfolioStore()
 
   const allocationData = useMemo(() => {
     const agents: Record<string, number> = {}
@@ -139,17 +153,29 @@ export default function Index() {
         </Card>
 
         <Card
-          className="hover:shadow-md transition-shadow animate-fade-in-up"
+          className="hover:shadow-md transition-shadow animate-fade-in-up border-primary/20 bg-primary/5"
           style={{ animationDelay: '300ms' }}
         >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Rentabilidade Acum.</CardTitle>
-            <Percent className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Rentabilidade</CardTitle>
+            <Select value={yieldPeriod} onValueChange={(v) => setYieldPeriod(v as YieldPeriod)}>
+              <SelectTrigger className="w-[100px] h-6 text-[10px] border-primary/30 bg-background">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Total</SelectItem>
+                <SelectItem value="24m">Últimos 24m</SelectItem>
+                <SelectItem value="12m">Últimos 12m</SelectItem>
+                <SelectItem value="6m">Últimos 6m</SelectItem>
+                <SelectItem value="3m">Últimos 3m</SelectItem>
+                <SelectItem value="1m">Último Mês</SelectItem>
+              </SelectContent>
+            </Select>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatPercent(portfolioYield)}</div>
             <p className="text-xs text-muted-foreground mt-1 text-emerald-600 font-medium">
-              +2.1% acima do IPCA
+              Variação no período
             </p>
           </CardContent>
         </Card>
@@ -246,54 +272,6 @@ export default function Index() {
           </CardContent>
         </Card>
       </div>
-
-      <Card className="animate-fade-in-up" style={{ animationDelay: '500ms' }}>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle>Movimentações Recentes</CardTitle>
-            <CardDescription>Últimos títulos adicionados à sua carteira</CardDescription>
-          </div>
-          <Button variant="ghost" size="sm" asChild>
-            <Link to="/portfolio">Ver todos</Link>
-          </Button>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {investments
-              .slice(-5)
-              .reverse()
-              .map((inv) => (
-                <div
-                  key={inv.id}
-                  className="flex items-center justify-between border-b border-border/50 pb-4 last:border-0 last:pb-0"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary text-secondary-foreground font-semibold text-xs">
-                      {inv.type.substring(0, 3)}
-                    </div>
-                    <div>
-                      <p className="font-medium text-sm">{inv.title}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {inv.agent} • {formatDate(inv.purchaseDate)}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-semibold text-sm">
-                      {formatCurrency(inv.purchasePrice * inv.quantity)}
-                    </p>
-                    <p className="text-xs text-emerald-600 font-medium">{inv.rate}% a.a.</p>
-                  </div>
-                </div>
-              ))}
-            {investments.length === 0 && (
-              <div className="text-center py-6 text-muted-foreground text-sm">
-                Nenhuma movimentação registrada.
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
     </div>
   )
 }

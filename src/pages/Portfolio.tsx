@@ -1,8 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Plus, Download, Edit2, Trash2, ArrowUpDown, FileText } from 'lucide-react'
+import { Plus, Download, Edit2, Trash2, ArrowUpDown, FileText, LineChart } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
   Table,
@@ -21,7 +21,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
   DialogDescription,
 } from '@/components/ui/dialog'
@@ -41,8 +40,18 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
-import usePortfolioStore, { Investment, BondType } from '@/stores/usePortfolioStore'
-import { formatCurrency, formatDate } from '@/lib/formatters'
+import usePortfolioStore, { Investment, YieldPeriod } from '@/stores/usePortfolioStore'
+import { formatCurrency, formatDate, formatPercent } from '@/lib/formatters'
+import {
+  LineChart as RechartsLineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+  Legend,
+} from 'recharts'
 
 const formSchema = z.object({
   title: z.string().min(3, 'Título muito curto'),
@@ -62,11 +71,15 @@ export default function Portfolio() {
     addInvestment,
     updateInvestment,
     deleteInvestment,
-    settings,
     calculateCurrentValue,
+    getYieldForPeriod,
+    yieldPeriod,
+    setYieldPeriod,
   } = usePortfolioStore()
+
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [isDeleteOpen, setIsDeleteOpen] = useState(false)
+  const [analyzingId, setAnalyzingId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const { toast } = useToast()
@@ -132,21 +145,56 @@ export default function Portfolio() {
 
   const exportCSV = () => {
     const headers = [
-      'Título,Corretora,Data Compra,Vencimento,Semestral,Qtd,Preço Compra,Taxa(%),VNA Atual,Total Atual',
+      'Título,Corretora,Data Compra,Qtd,Preço Compra,Taxa(%),VNA Atual,Total Atual,Yield',
     ]
     const rows = investments.map((i) => {
       const vna = calculateCurrentValue(i)
-      return `${i.title},${i.agent},${i.purchaseDate},${i.maturityDate || '-'},${i.hasSemiannualCoupon ? 'Sim' : 'Não'},${i.quantity},${i.purchasePrice},${i.rate},${vna.toFixed(2)},${(vna * i.quantity).toFixed(2)}`
+      const y = getYieldForPeriod(i, yieldPeriod)
+      return `${i.title},${i.agent},${i.purchaseDate},${i.quantity},${i.purchasePrice},${i.rate},${vna.toFixed(2)},${(vna * i.quantity).toFixed(2)},${y.toFixed(2)}`
     })
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers, ...rows].join('\n')
-    const encodedUri = encodeURI(csvContent)
     const link = document.createElement('a')
-    link.setAttribute('href', encodedUri)
-    link.setAttribute('download', 'minha_carteira_tesouro.csv')
+    link.href = encodeURI(csvContent)
+    link.download = 'minha_carteira_tesouro.csv'
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
   }
+
+  const analyzingInv = useMemo(
+    () => investments.find((i) => i.id === analyzingId),
+    [analyzingId, investments],
+  )
+
+  const mtmData = useMemo(() => {
+    if (!analyzingInv) return []
+    const data = []
+    const start = new Date(analyzingInv.purchaseDate)
+    const end = new Date()
+    const months =
+      (end.getFullYear() - start.getFullYear()) * 12 + end.getMonth() - start.getMonth()
+    let curCurve = analyzingInv.purchasePrice
+    let curMarket = analyzingInv.purchasePrice
+
+    for (let i = 0; i <= Math.max(months, 1); i++) {
+      const d = new Date(start)
+      d.setMonth(d.getMonth() + i)
+
+      const curveRate = analyzingInv.rate / 12 / 100
+      curCurve *= 1 + curveRate
+
+      // Simulate market fluctuation around the curve
+      const vol = Math.sin(i) * 0.02 + 1
+      curMarket = curCurve * vol
+
+      data.push({
+        name: d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }),
+        Curva: parseFloat(curCurve.toFixed(2)),
+        Mercado: parseFloat(curMarket.toFixed(2)),
+      })
+    }
+    return data
+  }, [analyzingInv])
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -156,59 +204,57 @@ export default function Portfolio() {
           <p className="text-muted-foreground">Gerencie seus títulos do Tesouro Direto.</p>
         </div>
         <div className="flex items-center gap-2">
+          <Select value={yieldPeriod} onValueChange={(v) => setYieldPeriod(v as YieldPeriod)}>
+            <SelectTrigger className="w-[140px] h-9">
+              <SelectValue placeholder="Período" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Desde o Início</SelectItem>
+              <SelectItem value="24m">Últimos 24m</SelectItem>
+              <SelectItem value="12m">Últimos 12m</SelectItem>
+              <SelectItem value="6m">Últimos 6m</SelectItem>
+              <SelectItem value="3m">Últimos 3m</SelectItem>
+              <SelectItem value="1m">Último Mês</SelectItem>
+            </SelectContent>
+          </Select>
           <Button variant="outline" onClick={exportCSV} className="hidden md:flex">
-            <Download className="mr-2 h-4 w-4" />
-            CSV
-          </Button>
-          <Button variant="outline" asChild>
-            <Link to="/report" target="_blank">
-              <FileText className="mr-2 h-4 w-4" />
-              PDF
-            </Link>
+            <Download className="mr-2 h-4 w-4" /> CSV
           </Button>
           <Button onClick={() => handleOpenForm()}>
             <Plus className="mr-2 h-4 w-4" />
-            <span className="hidden sm:inline">Adicionar Título</span>
+            <span className="hidden sm:inline">Adicionar</span>
             <span className="sm:hidden">Novo</span>
           </Button>
         </div>
       </div>
 
       <Card>
-        <CardHeader className="p-0 border-b">
-          <div className="px-6 py-4 flex items-center justify-between bg-muted/30 rounded-t-xl">
-            <CardTitle className="text-lg">Posição Consolidada</CardTitle>
-          </div>
-        </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
-              <TableRow className="bg-muted/10 hover:bg-muted/10">
-                <TableHead className="font-semibold">
-                  Título <ArrowUpDown className="inline ml-1 h-3 w-3" />
-                </TableHead>
-                <TableHead className="font-semibold hidden md:table-cell">Corretora</TableHead>
-                <TableHead className="font-semibold hidden lg:table-cell">Data Compra</TableHead>
-                <TableHead className="font-semibold text-right">Qtd</TableHead>
-                <TableHead className="font-semibold text-right hidden sm:table-cell">
-                  Taxa
-                </TableHead>
-                <TableHead className="font-semibold text-right">VNA (Estimado)</TableHead>
-                <TableHead className="font-semibold text-right">Valor Total</TableHead>
-                <TableHead className="w-[100px]"></TableHead>
+              <TableRow className="bg-muted/10">
+                <TableHead>Título</TableHead>
+                <TableHead className="hidden md:table-cell">Corretora</TableHead>
+                <TableHead className="text-right">Qtd</TableHead>
+                <TableHead className="text-right hidden sm:table-cell">Taxa</TableHead>
+                <TableHead className="text-right text-primary">Yield ({yieldPeriod})</TableHead>
+                <TableHead className="text-right">VNA Total</TableHead>
+                <TableHead className="w-[120px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {investments.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
-                    Nenhum título cadastrado. Adicione seu primeiro investimento!
+                  <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+                    Nenhum título cadastrado.
                   </TableCell>
                 </TableRow>
               ) : (
                 investments.map((inv) => {
                   const vna = calculateCurrentValue(inv)
                   const total = vna * inv.quantity
+                  const yieldVal = getYieldForPeriod(inv, yieldPeriod)
+
                   return (
                     <TableRow key={inv.id} className="group">
                       <TableCell className="font-medium">
@@ -218,19 +264,28 @@ export default function Portfolio() {
                       <TableCell className="hidden md:table-cell text-muted-foreground">
                         {inv.agent}
                       </TableCell>
-                      <TableCell className="hidden lg:table-cell text-muted-foreground">
-                        {formatDate(inv.purchaseDate)}
-                      </TableCell>
                       <TableCell className="text-right">{inv.quantity}</TableCell>
                       <TableCell className="text-right hidden sm:table-cell">{inv.rate}%</TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {formatCurrency(vna)}
+                      <TableCell
+                        className={`text-right font-medium ${yieldVal >= 0 ? 'text-emerald-600' : 'text-destructive'}`}
+                      >
+                        {yieldVal > 0 ? '+' : ''}
+                        {formatPercent(yieldVal)}
                       </TableCell>
-                      <TableCell className="text-right font-semibold tabular-nums text-primary">
+                      <TableCell className="text-right font-semibold text-primary">
                         {formatCurrency(total)}
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-blue-500"
+                            onClick={() => setAnalyzingId(inv.id)}
+                            title="Marcação a Mercado"
+                          >
+                            <LineChart className="h-4 w-4" />
+                          </Button>
                           <Button
                             variant="ghost"
                             size="icon"
@@ -276,7 +331,7 @@ export default function Portfolio() {
                     <FormItem>
                       <FormLabel>Nome do Título</FormLabel>
                       <FormControl>
-                        <Input placeholder="Ex: Tesouro IPCA+ 2045" {...field} />
+                        <Input {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -291,7 +346,7 @@ export default function Portfolio() {
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Selecione o tipo" />
+                            <SelectValue />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
@@ -311,9 +366,9 @@ export default function Portfolio() {
                   name="agent"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Agente de Custódia</FormLabel>
+                      <FormLabel>Corretora</FormLabel>
                       <FormControl>
-                        <Input placeholder="Ex: XP Investimentos" {...field} />
+                        <Input {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -327,32 +382,6 @@ export default function Portfolio() {
                       <FormLabel>Data de Compra</FormLabel>
                       <FormControl>
                         <Input type="date" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="maturityDate"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Data de Vencimento (Opcional)</FormLabel>
-                      <FormControl>
-                        <Input type="date" {...field} value={field.value || ''} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="rate"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Taxa Acordada (%)</FormLabel>
-                      <FormControl>
-                        <Input type="number" step="0.01" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -386,30 +415,105 @@ export default function Portfolio() {
                 />
                 <FormField
                   control={form.control}
-                  name="hasSemiannualCoupon"
+                  name="rate"
                   render={({ field }) => (
-                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 col-span-full mt-2">
+                    <FormItem>
+                      <FormLabel>Taxa (%)</FormLabel>
                       <FormControl>
-                        <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                        <Input type="number" step="0.01" {...field} />
                       </FormControl>
-                      <div className="space-y-1 leading-none">
-                        <FormLabel>Paga Juros Semestrais?</FormLabel>
-                        <p className="text-xs text-muted-foreground">
-                          Habilita notificações automáticas de pagamento de cupons.
-                        </p>
-                      </div>
+                      <FormMessage />
                     </FormItem>
                   )}
                 />
               </div>
-              <DialogFooter className="pt-4">
+              <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)}>
                   Cancelar
                 </Button>
-                <Button type="submit">Salvar Título</Button>
+                <Button type="submit">Salvar</Button>
               </DialogFooter>
             </form>
           </Form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!analyzingId} onOpenChange={(v) => !v && setAnalyzingId(null)}>
+        <DialogContent className="sm:max-w-[700px]">
+          <DialogHeader>
+            <DialogTitle>Análise de Marcação a Mercado</DialogTitle>
+            <DialogDescription>
+              {analyzingInv?.title} • {analyzingInv?.agent}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <RechartsLineChart
+                  data={mtmData}
+                  margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    vertical={false}
+                    stroke="hsl(var(--border))"
+                  />
+                  <XAxis
+                    dataKey="name"
+                    axisLine={false}
+                    tickLine={false}
+                    dy={10}
+                    tick={{ fontSize: 12 }}
+                  />
+                  <YAxis
+                    axisLine={false}
+                    tickLine={false}
+                    domain={['auto', 'auto']}
+                    tickFormatter={(v) => `R$ ${v}`}
+                    tick={{ fontSize: 12 }}
+                  />
+                  <RechartsTooltip
+                    formatter={(v: number) => formatCurrency(v)}
+                    contentStyle={{ borderRadius: '8px' }}
+                  />
+                  <Legend verticalAlign="top" height={36} />
+                  <Line
+                    type="monotone"
+                    dataKey="Mercado"
+                    name="Valor de Mercado"
+                    stroke="hsl(var(--primary))"
+                    strokeWidth={3}
+                    dot={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="Curva"
+                    name="Valor na Curva (Teórico)"
+                    stroke="hsl(var(--muted-foreground))"
+                    strokeWidth={2}
+                    strokeDasharray="5 5"
+                    dot={false}
+                  />
+                </RechartsLineChart>
+              </ResponsiveContainer>
+            </div>
+            {mtmData.length > 0 && (
+              <div className="flex justify-between items-center bg-muted/50 p-4 rounded-lg mt-4 border border-border/50">
+                <div>
+                  <p className="text-sm text-muted-foreground">Valor na Curva Atual</p>
+                  <p className="font-semibold">
+                    {formatCurrency(mtmData[mtmData.length - 1].Curva)}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm text-muted-foreground">Valor de Mercado Atual</p>
+                  <p className="font-semibold text-primary">
+                    {formatCurrency(mtmData[mtmData.length - 1].Mercado)}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -417,17 +521,13 @@ export default function Portfolio() {
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Confirmar exclusão</DialogTitle>
-            <DialogDescription>
-              Tem certeza que deseja remover este título da sua carteira? Esta ação não pode ser
-              desfeita.
-            </DialogDescription>
           </DialogHeader>
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setIsDeleteOpen(false)}>
               Cancelar
             </Button>
             <Button variant="destructive" onClick={confirmDelete}>
-              Sim, excluir
+              Excluir
             </Button>
           </DialogFooter>
         </DialogContent>

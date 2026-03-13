@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo } from 'react'
 
 export type BondType = 'IPCA+' | 'Selic' | 'Prefixado' | 'Renda+' | 'Educa+'
+export type YieldPeriod = '1m' | '3m' | '6m' | '12m' | '24m' | 'all'
 
 export interface Investment {
   id: string
@@ -23,23 +24,45 @@ export interface Notification {
   date: string
 }
 
+export interface BrokerConnection {
+  id: string
+  name: string
+  status: 'connected' | 'disconnected'
+  lastSync?: string
+  logo?: string
+}
+
+export interface Dividend {
+  id: string
+  date: string
+  amount: number
+  title: string
+  agent: string
+}
+
 interface PortfolioState {
   investments: Investment[]
   settings: {
     lastSync: string
     ipcaAverage24m: number
   }
+  yieldPeriod: YieldPeriod
+  brokers: BrokerConnection[]
+  dividends: Dividend[]
   addInvestment: (inv: Omit<Investment, 'id'>) => void
   updateInvestment: (id: string, inv: Partial<Investment>) => void
   deleteInvestment: (id: string) => void
   importInvestments: (invs: Omit<Investment, 'id'>[]) => void
   updateSettings: (settings: Partial<PortfolioState['settings']>) => void
+  setYieldPeriod: (period: YieldPeriod) => void
+  toggleBroker: (id: string) => void
   totalInvested: number
   currentValue: number
   projectedInterestYear: number
   portfolioYield: number
   notifications: Notification[]
   calculateCurrentValue: (inv: Investment) => number
+  getYieldForPeriod: (inv: Investment, period: YieldPeriod) => number
 }
 
 const now = new Date()
@@ -105,6 +128,28 @@ const INITIAL_MOCK_DATA: Investment[] = [
   },
 ]
 
+const INITIAL_BROKERS: BrokerConnection[] = [
+  {
+    id: 'b1',
+    name: 'XP Investimentos',
+    status: 'disconnected',
+    logo: 'https://img.usecurling.com/i?q=investment&color=black&shape=fill',
+  },
+  {
+    id: 'b2',
+    name: 'BTG Pactual',
+    status: 'connected',
+    lastSync: new Date().toISOString(),
+    logo: 'https://img.usecurling.com/i?q=bank&color=blue&shape=fill',
+  },
+  {
+    id: 'b3',
+    name: 'NuInvest',
+    status: 'disconnected',
+    logo: 'https://img.usecurling.com/i?q=finance&color=purple&shape=fill',
+  },
+]
+
 const PortfolioContext = createContext<PortfolioState | undefined>(undefined)
 
 export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
@@ -117,6 +162,32 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     lastSync: new Date().toISOString(),
     ipcaAverage24m: 4.5,
   })
+
+  const [yieldPeriod, setYieldPeriod] = useState<YieldPeriod>('all')
+
+  const [brokers, setBrokers] = useState<BrokerConnection[]>(INITIAL_BROKERS)
+
+  const dividends = useMemo(() => {
+    const data: Dividend[] = []
+    const currentDate = new Date()
+    investments.forEach((inv) => {
+      if (inv.hasSemiannualCoupon) {
+        let paymentDate = new Date(inv.purchaseDate)
+        paymentDate.setMonth(paymentDate.getMonth() + 6)
+        while (paymentDate <= currentDate) {
+          data.push({
+            id: crypto.randomUUID(),
+            date: paymentDate.toISOString().split('T')[0],
+            amount: inv.purchasePrice * inv.quantity * (inv.rate / 200), // mock half year
+            title: inv.title,
+            agent: inv.agent,
+          })
+          paymentDate.setMonth(paymentDate.getMonth() + 6)
+        }
+      }
+    })
+    return data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  }, [investments])
 
   useEffect(() => {
     localStorage.setItem('@tesouro-vision:investments', JSON.stringify(investments))
@@ -197,6 +268,20 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     setSettings((prev) => ({ ...prev, ...newSettings }))
   }
 
+  const toggleBroker = (id: string) => {
+    setBrokers((prev) =>
+      prev.map((b) =>
+        b.id === id
+          ? {
+              ...b,
+              status: b.status === 'connected' ? 'disconnected' : 'connected',
+              lastSync: b.status === 'disconnected' ? new Date().toISOString() : undefined,
+            }
+          : b,
+      ),
+    )
+  }
+
   const calculateCurrentValue = (inv: Investment) => {
     const purchaseDate = new Date(inv.purchaseDate)
     const today = new Date()
@@ -209,6 +294,36 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     return inv.purchasePrice * Math.pow(1 + mockYieldRate, yearsElapsed)
   }
 
+  const getYieldForPeriod = (inv: Investment, period: YieldPeriod) => {
+    const totalYield = calculateCurrentValue(inv) / inv.purchasePrice - 1
+    const purchaseDate = new Date(inv.purchaseDate)
+    const today = new Date()
+    const monthsElapsed =
+      (today.getFullYear() - purchaseDate.getFullYear()) * 12 +
+      today.getMonth() -
+      purchaseDate.getMonth()
+
+    if (monthsElapsed === 0) return totalYield * 100
+
+    const monthlyYield = totalYield / Math.max(1, monthsElapsed)
+
+    switch (period) {
+      case '1m':
+        return monthlyYield * 1 * 100
+      case '3m':
+        return monthlyYield * Math.min(3, monthsElapsed) * 100
+      case '6m':
+        return monthlyYield * Math.min(6, monthsElapsed) * 100
+      case '12m':
+        return monthlyYield * Math.min(12, monthsElapsed) * 100
+      case '24m':
+        return monthlyYield * Math.min(24, monthsElapsed) * 100
+      case 'all':
+      default:
+        return totalYield * 100
+    }
+  }
+
   const totalInvested = useMemo(() => {
     return investments.reduce((acc, inv) => acc + inv.purchasePrice * inv.quantity, 0)
   }, [investments])
@@ -217,8 +332,16 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     return investments.reduce((acc, inv) => acc + calculateCurrentValue(inv) * inv.quantity, 0)
   }, [investments, settings.ipcaAverage24m])
 
-  const portfolioYield =
-    totalInvested > 0 ? ((currentValue - totalInvested) / totalInvested) * 100 : 0
+  const portfolioYield = useMemo(() => {
+    if (totalInvested === 0) return 0
+    let totalWeightedYield = 0
+    investments.forEach((inv) => {
+      const invWeight = (inv.purchasePrice * inv.quantity) / totalInvested
+      totalWeightedYield += getYieldForPeriod(inv, yieldPeriod) * invWeight
+    })
+    return totalWeightedYield
+  }, [investments, totalInvested, yieldPeriod, settings.ipcaAverage24m])
+
   const projectedInterestYear = currentValue * 0.085
 
   return React.createElement(
@@ -227,17 +350,23 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
       value: {
         investments,
         settings,
+        yieldPeriod,
+        brokers,
+        dividends,
         addInvestment,
         updateInvestment,
         deleteInvestment,
         importInvestments,
         updateSettings,
+        setYieldPeriod,
+        toggleBroker,
         totalInvested,
         currentValue,
         projectedInterestYear,
         portfolioYield,
         notifications,
         calculateCurrentValue,
+        getYieldForPeriod,
       },
     },
     children,

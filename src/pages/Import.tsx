@@ -1,5 +1,13 @@
 import React, { useState, useRef } from 'react'
-import { UploadCloud, FileSpreadsheet, Settings2, RefreshCw, CheckCircle2 } from 'lucide-react'
+import {
+  UploadCloud,
+  FileSpreadsheet,
+  Settings2,
+  RefreshCw,
+  CheckCircle2,
+  Link as LinkIcon,
+  Unlink,
+} from 'lucide-react'
 import {
   Card,
   CardContent,
@@ -11,12 +19,13 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
 import usePortfolioStore, { BondType } from '@/stores/usePortfolioStore'
-import { parseExcelDate } from '@/lib/formatters'
+import { parseExcelDate, formatDate } from '@/lib/formatters'
 
 export default function Import() {
-  const { importInvestments, settings, updateSettings } = usePortfolioStore()
+  const { importInvestments, settings, updateSettings, brokers, toggleBroker } = usePortfolioStore()
   const { toast } = useToast()
   const [isDragging, setIsDragging] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
@@ -36,7 +45,6 @@ export default function Import() {
       if (lines.length <= 1) throw new Error('Arquivo vazio ou sem dados.')
 
       const newInvs = []
-      // Skip header, process rows
       for (let i = 1; i < lines.length; i++) {
         const cols = lines[i].split(',')
         if (cols.length >= 6) {
@@ -126,18 +134,6 @@ export default function Import() {
     }
   }
 
-  const downloadTemplate = () => {
-    const content =
-      'Título,Corretora,Data Compra,Qtd,Preço Unitário,Taxa (%)\nTesouro IPCA+ 2045,XP Investimentos,15/01/2023,10,1200.50,5.5'
-    const encodedUri = encodeURI('data:text/csv;charset=utf-8,' + content)
-    const link = document.createElement('a')
-    link.setAttribute('href', encodedUri)
-    link.setAttribute('download', 'modelo_importacao_tesouro.csv')
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-  }
-
   return (
     <div className="space-y-6 animate-fade-in max-w-5xl mx-auto">
       <div>
@@ -147,18 +143,87 @@ export default function Import() {
         </p>
       </div>
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <LinkIcon className="h-5 w-5 text-primary" />
+            Integração Open Finance (Opcional)
+          </CardTitle>
+          <CardDescription>
+            Conecte suas corretoras para sincronizar automaticamente seus títulos. As importações
+            manuais via CSV continuam funcionando normalmente.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-3">
+            {brokers.map((broker) => (
+              <div
+                key={broker.id}
+                className={`flex flex-col items-center justify-center p-6 border rounded-xl transition-all ${
+                  broker.status === 'connected'
+                    ? 'border-primary bg-primary/5'
+                    : 'border-border bg-card hover:border-primary/50'
+                }`}
+              >
+                <img
+                  src={broker.logo}
+                  alt={broker.name}
+                  className="h-10 w-10 object-contain mb-3 rounded-md mix-blend-multiply"
+                />
+                <h4 className="font-semibold text-sm mb-1">{broker.name}</h4>
+                <Badge
+                  variant={broker.status === 'connected' ? 'default' : 'secondary'}
+                  className="mb-4 text-[10px]"
+                >
+                  {broker.status === 'connected' ? 'Conectado' : 'Desconectado'}
+                </Badge>
+                {broker.status === 'connected' && broker.lastSync && (
+                  <p className="text-xs text-muted-foreground mb-4 text-center">
+                    Última sinc: {formatDate(broker.lastSync)}
+                  </p>
+                )}
+                <Button
+                  variant={broker.status === 'connected' ? 'outline' : 'default'}
+                  size="sm"
+                  className="w-full gap-2"
+                  onClick={() => {
+                    toggleBroker(broker.id)
+                    toast({
+                      title:
+                        broker.status === 'connected'
+                          ? `Desconectado de ${broker.name}`
+                          : `Conectado a ${broker.name}`,
+                    })
+                  }}
+                >
+                  {broker.status === 'connected' ? (
+                    <>
+                      <Unlink className="h-3 w-3" /> Desconectar
+                    </>
+                  ) : (
+                    <>
+                      <LinkIcon className="h-3 w-3" /> Conectar
+                    </>
+                  )}
+                </Button>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid gap-6 md:grid-cols-2">
         <Card className="flex flex-col">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
-              Importação por Planilha (CSV)
+              Importação Manual (CSV)
             </CardTitle>
             <CardDescription>Envie um arquivo CSV contendo sua carteira histórica.</CardDescription>
           </CardHeader>
           <CardContent className="flex-1">
             <div
-              className={`border-2 border-dashed rounded-xl p-8 text-center flex flex-col items-center justify-center transition-colors h-full min-h-[250px] ${
+              className={`border-2 border-dashed rounded-xl p-8 text-center flex flex-col items-center justify-center transition-colors h-full min-h-[200px] ${
                 isDragging
                   ? 'border-primary bg-primary/5'
                   : 'border-border hover:border-primary/50 hover:bg-muted/50'
@@ -168,13 +233,11 @@ export default function Import() {
               onDrop={handleDrop}
             >
               <UploadCloud
-                className={`h-12 w-12 mb-4 ${isDragging ? 'text-primary' : 'text-muted-foreground'}`}
+                className={`h-10 w-10 mb-4 ${isDragging ? 'text-primary' : 'text-muted-foreground'}`}
               />
-              <h3 className="text-lg font-medium mb-1">Arraste seu arquivo aqui</h3>
-              <p className="text-sm text-muted-foreground mb-6">
-                ou clique para selecionar do seu computador (Formato CSV)
+              <p className="text-sm text-muted-foreground mb-4">
+                Arraste seu arquivo CSV ou clique para selecionar
               </p>
-
               <input
                 type="file"
                 ref={fileInputRef}
@@ -182,31 +245,20 @@ export default function Import() {
                 accept=".csv"
                 onChange={handleFileChange}
               />
-              <Button onClick={() => fileInputRef.current?.click()} variant="secondary">
+              <Button onClick={() => fileInputRef.current?.click()} variant="secondary" size="sm">
                 Selecionar Arquivo
               </Button>
             </div>
           </CardContent>
-          <CardFooter className="bg-muted/30 border-t flex justify-between">
-            <p className="text-xs text-muted-foreground flex items-center">
-              <CheckCircle2 className="h-3 w-3 mr-1 text-emerald-500" /> Formato aceito: CSV
-            </p>
-            <Button variant="link" size="sm" className="h-auto p-0" onClick={downloadTemplate}>
-              Baixar modelo
-            </Button>
-          </CardFooter>
         </Card>
 
         <div className="space-y-6 flex flex-col">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <RefreshCw className="h-5 w-5 text-blue-500" />
+              <CardTitle className="flex items-center gap-2 text-base">
+                <RefreshCw className="h-4 w-4 text-blue-500" />
                 Sincronização de VNA
               </CardTitle>
-              <CardDescription>
-                O Valor Nominal Atualizado afeta a precificação diária da sua carteira.
-              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between bg-secondary/30 p-4 rounded-lg border border-border/50">
@@ -216,13 +268,9 @@ export default function Import() {
                     {new Date(settings.lastSync).toLocaleString('pt-BR')}
                   </p>
                 </div>
-                <Button onClick={handleSyncVNA} disabled={isSyncing}>
-                  {isSyncing ? (
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                  )}
-                  {isSyncing ? 'Sincronizando...' : 'Sincronizar Agora'}
+                <Button size="sm" onClick={handleSyncVNA} disabled={isSyncing}>
+                  <RefreshCw className={`h-3 w-3 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
+                  Sincronizar
                 </Button>
               </div>
             </CardContent>
@@ -230,17 +278,16 @@ export default function Import() {
 
           <Card className="flex-1">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Settings2 className="h-5 w-5 text-orange-500" />
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Settings2 className="h-4 w-4 text-orange-500" />
                 Parâmetros de Projeção
               </CardTitle>
-              <CardDescription>
-                Ajuste as constantes matemáticas utilizadas nos gráficos de projeção futura.
-              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="ipca">Média IPCA (Últimos 24 meses) %</Label>
+                <Label htmlFor="ipca" className="text-xs">
+                  Média IPCA (Últimos 24 meses) %
+                </Label>
                 <div className="flex gap-2">
                   <Input
                     id="ipca"
@@ -248,16 +295,12 @@ export default function Import() {
                     step="0.01"
                     value={ipcaInput}
                     onChange={(e) => setIpcaInput(e.target.value)}
-                    className="max-w-[200px]"
+                    className="max-w-[150px] h-9"
                   />
-                  <Button variant="secondary" onClick={saveSettings}>
+                  <Button variant="secondary" size="sm" onClick={saveSettings}>
                     Salvar
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Este valor é utilizado para estimar a inflação futura dos títulos indexados ao
-                  IPCA nas telas de Projeção.
-                </p>
               </div>
             </CardContent>
           </Card>

@@ -10,6 +10,7 @@ import {
   Settings,
   Calculator,
   Bell,
+  HandCoins,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -34,6 +35,7 @@ import { cn } from '@/lib/utils'
 const navItems = [
   { title: 'Dashboard', icon: LayoutDashboard, path: '/' },
   { title: 'Minha Carteira', icon: Wallet, path: '/portfolio' },
+  { title: 'Dividendos', icon: HandCoins, path: '/dividends' },
   { title: 'Projeções', icon: TrendingUp, path: '/projections' },
   { title: 'Benchmarks', icon: BarChart3, path: '/benchmarks' },
   { title: 'Simulador', icon: Calculator, path: '/simulator' },

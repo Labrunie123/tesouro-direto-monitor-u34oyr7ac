@@ -10,6 +10,7 @@ import Benchmarks from './pages/Benchmarks'
 import Import from './pages/Import'
 import Simulator from './pages/Simulator'
 import Report from './pages/Report'
+import Dividends from './pages/Dividends'
 import NotFound from './pages/NotFound'
 import { PortfolioProvider } from './stores/usePortfolioStore'
 
@@ -23,6 +24,7 @@ const App = () => (
           <Route element={<Layout />}>
             <Route path="/" element={<Index />} />
             <Route path="/portfolio" element={<Portfolio />} />
+            <Route path="/dividends" element={<Dividends />} />
             <Route path="/projections" element={<Projections />} />
             <Route path="/benchmarks" element={<Benchmarks />} />
             <Route path="/simulator" element={<Simulator />} />
