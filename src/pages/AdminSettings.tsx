@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { ShieldAlert, KeyRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -68,6 +68,20 @@ export default function AdminSettings() {
           Gerencie o CPF e as senhas mestre de acesso à plataforma.
         </p>
       </div>
+
+      <Card className="shadow-sm">
+        <CardHeader>
+          <CardTitle>Minha Carteira (Administrador)</CardTitle>
+          <CardDescription>
+            Acesse e gerencie sua própria carteira de investimentos para incluir no comparativo.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button asChild>
+            <Link to={`/admin/users/${activeUser?.id}/portfolio`}>Ver/Editar Minha Carteira</Link>
+          </Button>
+        </CardContent>
+      </Card>
 
       <Card className="shadow-sm">
         <CardHeader>

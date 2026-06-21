@@ -53,10 +53,7 @@ export default function Users() {
 
   const handleEditClick = (user: User) => {
     if (user.role === 'Admin') {
-      toast({
-        title: 'Admins devem editar seus dados na página de Configurações.',
-        variant: 'destructive',
-      })
+      navigate(`/admin/users/${user.id}/portfolio`)
       return
     }
     setEditingUser(user)
@@ -152,21 +149,21 @@ export default function Users() {
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">
-                    {user.role === 'User' && (
-                      <Button variant="outline" size="icon" asChild title="Ver Carteira">
-                        <Link to={`/admin/users/${user.id}/portfolio`}>
-                          <Eye className="h-4 w-4" />
-                        </Link>
+                    <Button variant="outline" size="icon" asChild title="Ver Carteira">
+                      <Link to={`/admin/users/${user.id}/portfolio`}>
+                        <Eye className="h-4 w-4" />
+                      </Link>
+                    </Button>
+                    {user.role !== 'Admin' && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleEditClick(user)}
+                        title="Editar"
+                      >
+                        <Edit className="h-4 w-4" />
                       </Button>
                     )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleEditClick(user)}
-                      title="Editar"
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
                     {user.role === 'User' && (
                       <Button
                         variant="ghost"

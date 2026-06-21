@@ -15,9 +15,11 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import useUserStore from '@/stores/useUserStore'
+import usePortfolioStore from '@/stores/usePortfolioStore'
 
 export default function AdminComparison() {
   const { users, activeRole } = useUserStore()
+  const { allInvestments, calculateCurrentValue } = usePortfolioStore()
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -41,8 +43,19 @@ export default function AdminComparison() {
 
     const data = []
 
-    const userVals: Record<string, number> = {}
-    selectedUsers.forEach((uid) => (userVals[uid] = 100))
+    const startDate = new Date()
+    startDate.setMonth(startDate.getMonth() - months)
+
+    const userBaseVals: Record<string, number> = {}
+    selectedUsers.forEach((uid) => {
+      const userInvs = allInvestments.filter((inv) => inv.userId === uid)
+      let baseVal = 0
+      userInvs.forEach((inv) => {
+        baseVal += calculateCurrentValue(inv, startDate) * inv.quantity
+      })
+      userBaseVals[uid] = baseVal > 0 ? baseVal : 1
+    })
+
     let selicVal = 100
     let ipcaVal = 100
     let ipca6Val = 100
@@ -57,28 +70,46 @@ export default function AdminComparison() {
       selectedUsers.forEach((uid) => {
         const user = users.find((u) => u.id === uid)
         if (user) {
-          row[user.name] = parseFloat(userVals[uid].toFixed(2))
-          userVals[uid] *= 1 + (0.005 + Math.random() * 0.008)
+          const userInvs = allInvestments.filter((inv) => inv.userId === uid)
+          let currentVal = 0
+          userInvs.forEach((inv) => {
+            currentVal += calculateCurrentValue(inv, d) * inv.quantity
+          })
+
+          if (userBaseVals[uid] === 1 && currentVal === 0) {
+            row[user.name] = 100
+          } else {
+            row[user.name] = parseFloat(((currentVal / userBaseVals[uid]) * 100).toFixed(2))
+          }
         }
       })
 
       if (showSelic) {
         row['SELIC'] = parseFloat(selicVal.toFixed(2))
-        selicVal *= 1 + 0.0085
+        if (i > 0) selicVal *= 1 + 0.0085
       }
       if (showIpca) {
         row['IPCA'] = parseFloat(ipcaVal.toFixed(2))
-        ipcaVal *= 1 + 0.0035
+        if (i > 0) ipcaVal *= 1 + 0.0035
       }
       if (showIpcaPlus6) {
         row['IPCA + 6%'] = parseFloat(ipca6Val.toFixed(2))
-        ipca6Val *= 1 + 0.0082
+        if (i > 0) ipca6Val *= 1 + 0.0082
       }
 
       data.push(row)
     }
     return data
-  }, [selectedUsers, showSelic, showIpca, showIpcaPlus6, timeRange, users])
+  }, [
+    selectedUsers,
+    showSelic,
+    showIpca,
+    showIpcaPlus6,
+    timeRange,
+    users,
+    allInvestments,
+    calculateCurrentValue,
+  ])
 
   const colors = [
     'hsl(var(--chart-1))',
@@ -88,7 +119,7 @@ export default function AdminComparison() {
     'hsl(var(--chart-5))',
   ]
 
-  const selectableUsers = users.filter((u) => u.role === 'User')
+  const selectableUsers = users
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -126,7 +157,7 @@ export default function AdminComparison() {
                       htmlFor={`user-${user.id}`}
                       className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
                     >
-                      {user.name}
+                      {user.role === 'Admin' ? `${user.name} (Minha Carteira)` : user.name}
                     </label>
                   </div>
                 ))
