@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { TrendingUp } from 'lucide-react'
+import { TrendingUp, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/hooks/use-toast'
@@ -9,11 +9,14 @@ import useUserStore from '@/stores/useUserStore'
 export default function Login() {
   const [cpf, setCpf] = useState('')
   const [password, setPassword] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState(false)
   const { login } = useUserStore()
   const navigate = useNavigate()
   const { toast } = useToast()
 
   const handleCpfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (error) setError(false)
     let val = e.target.value.replace(/\D/g, '')
     if (val.length > 11) val = val.slice(0, 11)
     val = val.replace(/(\d{3})(\d)/, '$1.$2')
@@ -22,9 +25,18 @@ export default function Login() {
     setCpf(val)
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setIsLoading(true)
+    setError(false)
+
+    // Simulate network delay for loading state
+    await new Promise((resolve) => setTimeout(resolve, 800))
+
     const role = login(cpf, password)
+
+    setIsLoading(false)
+
     if (role) {
       toast({ title: 'Acesso liberado com sucesso' })
       if (role === 'Admin') {
@@ -33,6 +45,7 @@ export default function Login() {
         navigate('/')
       }
     } else {
+      setError(true)
       toast({ title: 'Credenciais inválidas', variant: 'destructive' })
     }
   }
@@ -53,15 +66,46 @@ export default function Login() {
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">CPF</label>
-            <Input value={cpf} onChange={handleCpfChange} placeholder="000.000.000-00" />
+            <label className={`text-sm font-medium ${error ? 'text-destructive' : ''}`}>CPF</label>
+            <Input
+              value={cpf}
+              onChange={handleCpfChange}
+              placeholder="000.000.000-00"
+              className={error ? 'border-destructive' : ''}
+              disabled={isLoading}
+            />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">Senha</label>
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            <label className={`text-sm font-medium ${error ? 'text-destructive' : ''}`}>
+              Senha
+            </label>
+            <Input
+              type="password"
+              value={password}
+              onChange={(e) => {
+                if (error) setError(false)
+                setPassword(e.target.value)
+              }}
+              className={error ? 'border-destructive' : ''}
+              disabled={isLoading}
+            />
           </div>
-          <Button type="submit" className="w-full mt-2">
-            Entrar
+
+          {error && (
+            <p className="text-sm text-destructive font-medium animate-fade-in">
+              Credenciais inválidas, tente novamente.
+            </p>
+          )}
+
+          <Button type="submit" className="w-full mt-2" disabled={isLoading}>
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Validando...
+              </>
+            ) : (
+              'Entrar'
+            )}
           </Button>
         </div>
         <div className="mt-8 pt-4 border-t border-border text-xs text-muted-foreground text-center space-y-1">

@@ -92,6 +92,26 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
   )
 
   const login = (cpf: string, pass: string): 'Admin' | 'User' | false => {
+    // Hardcoded check for main admin to prevent localStorage desync issues
+    // and serve as a reliable source of truth
+    if (cpf === '000.000.000-00') {
+      const adminId = '1'
+      if (pass === 'admin123') {
+        setActiveUserId(adminId)
+        setActiveRole('Admin')
+        localStorage.setItem('@tesouro-vision:activeUserId', adminId)
+        localStorage.setItem('@tesouro-vision:activeRole', 'Admin')
+        return 'Admin'
+      }
+      if (pass === 'user123') {
+        setActiveUserId(adminId)
+        setActiveRole('User')
+        localStorage.setItem('@tesouro-vision:activeUserId', adminId)
+        localStorage.setItem('@tesouro-vision:activeRole', 'User')
+        return 'User'
+      }
+    }
+
     const user = users.find((u) => u.cpf === cpf)
     if (!user) return false
 
