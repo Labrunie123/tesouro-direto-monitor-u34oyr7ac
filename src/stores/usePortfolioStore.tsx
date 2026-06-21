@@ -48,6 +48,14 @@ export interface Dividend {
   agent: string
 }
 
+export interface ConnectionLog {
+  id: string
+  brokerId: string
+  brokerName: string
+  action: 'connected' | 'disconnected'
+  timestamp: string
+}
+
 interface PortfolioState {
   investments: Investment[]
   settings: { lastSync: string; ipcaAverage24m: number }
@@ -55,6 +63,8 @@ interface PortfolioState {
   brokers: BrokerConnection[]
   dividends: Dividend[]
   nextCoupon: { date: Date; amount: number } | null
+  connectionLogs: ConnectionLog[]
+  addConnectionLog: (log: Omit<ConnectionLog, 'id' | 'timestamp'>) => void
   addInvestment: (inv: Omit<Investment, 'id'>) => void
   updateInvestment: (id: string, inv: Partial<Investment>) => void
   deleteInvestment: (id: string) => void
@@ -212,6 +222,15 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     }
   })
 
+  const [connectionLogs, setConnectionLogs] = useState<ConnectionLog[]>(() => {
+    try {
+      const saved = localStorage.getItem('@tesouro-vision:connection-logs')
+      return saved ? JSON.parse(saved) : []
+    } catch {
+      return []
+    }
+  })
+
   useEffect(() => {
     try {
       localStorage.setItem('@tesouro-vision:settings', JSON.stringify(settings))
@@ -235,6 +254,14 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
       console.warn('Failed to save brokers to local storage', e)
     }
   }, [brokers])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('@tesouro-vision:connection-logs', JSON.stringify(connectionLogs))
+    } catch (e) {
+      console.warn('Failed to save connection logs to local storage', e)
+    }
+  }, [connectionLogs])
 
   const dividends = useMemo(() => {
     const data: Dividend[] = []
@@ -299,6 +326,18 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     setInvestments((p) => [...p, ...invs.map((i) => ({ ...i, id: crypto.randomUUID() }))])
   const updateSettings = (newSettings: Partial<PortfolioState['settings']>) =>
     setSettings((p) => ({ ...p, ...newSettings }))
+
+  const addConnectionLog = (log: Omit<ConnectionLog, 'id' | 'timestamp'>) => {
+    setConnectionLogs((p) => [
+      {
+        ...log,
+        id: crypto.randomUUID(),
+        timestamp: new Date().toISOString(),
+      },
+      ...p,
+    ])
+  }
+
   const toggleBroker = (id: string) =>
     setBrokers((p) =>
       p.map((b) =>
@@ -460,6 +499,8 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
         brokers,
         dividends,
         nextCoupon,
+        connectionLogs,
+        addConnectionLog,
         addInvestment,
         updateInvestment,
         deleteInvestment,
