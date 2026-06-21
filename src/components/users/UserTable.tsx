@@ -11,14 +11,16 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Card, CardContent } from '@/components/ui/card'
+import { Switch } from '@/components/ui/switch'
 import useUserStore, { User } from '@/stores/useUserStore'
 
 interface UserTableProps {
   onEdit: (user: User) => void
   onDelete: (user: User) => void
+  onToggleStatus: (user: User, status: 'Active' | 'Inactive') => void
 }
 
-export function UserTable({ onEdit, onDelete }: UserTableProps) {
+export function UserTable({ onEdit, onDelete, onToggleStatus }: UserTableProps) {
   const { filteredUsers } = useUserStore()
 
   if (filteredUsers.length === 0) {
@@ -52,9 +54,18 @@ export function UserTable({ onEdit, onDelete }: UserTableProps) {
                   <Badge variant="outline">{user.role}</Badge>
                 </TableCell>
                 <TableCell>
-                  <Badge variant={user.status === 'Active' ? 'default' : 'secondary'}>
-                    {user.status === 'Active' ? 'Ativo' : 'Inativo'}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={user.status === 'Active'}
+                      onCheckedChange={(checked) =>
+                        onToggleStatus(user, checked ? 'Active' : 'Inactive')
+                      }
+                      aria-label="Alternar status do usuário"
+                    />
+                    <Badge variant={user.status === 'Active' ? 'default' : 'secondary'}>
+                      {user.status === 'Active' ? 'Ativo' : 'Inativo'}
+                    </Badge>
+                  </div>
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">
@@ -86,11 +97,20 @@ export function UserTable({ onEdit, onDelete }: UserTableProps) {
                 <p className="text-sm text-muted-foreground">{user.email}</p>
               </div>
               <div className="flex justify-between items-center">
-                <div className="flex gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <Badge variant="outline">{user.role}</Badge>
-                  <Badge variant={user.status === 'Active' ? 'default' : 'secondary'}>
-                    {user.status === 'Active' ? 'Ativo' : 'Inativo'}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={user.status === 'Active'}
+                      onCheckedChange={(checked) =>
+                        onToggleStatus(user, checked ? 'Active' : 'Inactive')
+                      }
+                      aria-label="Alternar status do usuário"
+                    />
+                    <Badge variant={user.status === 'Active' ? 'default' : 'secondary'}>
+                      {user.status === 'Active' ? 'Ativo' : 'Inativo'}
+                    </Badge>
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={() => onEdit(user)}>

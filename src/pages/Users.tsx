@@ -43,6 +43,15 @@ export default function Users() {
     setDeletingUser(null)
   }
 
+  const handleToggleStatus = (user: User, status: 'Active' | 'Inactive') => {
+    try {
+      updateUser(user.id, { status })
+      toast({ title: 'Status do usuário atualizado com sucesso' })
+    } catch (error) {
+      toast({ title: 'Erro ao atualizar status', variant: 'destructive' })
+    }
+  }
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -73,7 +82,11 @@ export default function Users() {
         </div>
       </div>
 
-      <UserTable onEdit={handleEditClick} onDelete={setDeletingUser} />
+      <UserTable
+        onEdit={handleEditClick}
+        onDelete={setDeletingUser}
+        onToggleStatus={handleToggleStatus}
+      />
 
       <UserFormDialog
         open={isFormOpen}
