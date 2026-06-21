@@ -12,6 +12,10 @@ import Simulator from './pages/Simulator'
 import Report from './pages/Report'
 import Dividends from './pages/Dividends'
 import Users from './pages/Users'
+import Login from './pages/Login'
+import AdminComparison from './pages/AdminComparison'
+import AdminSettings from './pages/AdminSettings'
+import AdminUserPortfolio from './pages/AdminUserPortfolio'
 import NotFound from './pages/NotFound'
 import { PortfolioProvider } from './stores/usePortfolioStore'
 import { UserProvider } from './stores/useUserStore'
@@ -24,6 +28,7 @@ const App = () => (
           <Toaster />
           <Sonner />
           <Routes>
+            <Route path="/login" element={<Login />} />
             <Route element={<Layout />}>
               <Route path="/" element={<Index />} />
               <Route path="/portfolio" element={<Portfolio />} />
@@ -33,6 +38,9 @@ const App = () => (
               <Route path="/simulator" element={<Simulator />} />
               <Route path="/users" element={<Users />} />
               <Route path="/import" element={<Import />} />
+              <Route path="/admin/comparison" element={<AdminComparison />} />
+              <Route path="/admin/settings" element={<AdminSettings />} />
+              <Route path="/admin/users/:userId/portfolio" element={<AdminUserPortfolio />} />
             </Route>
             <Route path="/report" element={<Report />} />
             <Route path="*" element={<NotFound />} />

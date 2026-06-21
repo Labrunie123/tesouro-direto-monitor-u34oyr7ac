@@ -13,6 +13,7 @@ export type YieldPeriod = '1m' | '3m' | '6m' | '12m' | '24m' | 'all'
 
 export interface Investment {
   id: string
+  userId: string
   title: string
   agent: string
   purchaseDate: string
@@ -57,7 +58,10 @@ export interface ConnectionLog {
 }
 
 interface PortfolioState {
+  allInvestments: Investment[]
   investments: Investment[]
+  currentUserId: string | null
+  setCurrentUserId: (id: string | null) => void
   settings: { lastSync: string; ipcaAverage24m: number }
   yieldPeriod: YieldPeriod
   brokers: BrokerConnection[]
@@ -65,10 +69,10 @@ interface PortfolioState {
   nextCoupon: { date: Date; amount: number } | null
   connectionLogs: ConnectionLog[]
   addConnectionLog: (log: Omit<ConnectionLog, 'id' | 'timestamp'>) => void
-  addInvestment: (inv: Omit<Investment, 'id'>) => void
+  addInvestment: (inv: Omit<Investment, 'id' | 'userId'>) => void
   updateInvestment: (id: string, inv: Partial<Investment>) => void
   deleteInvestment: (id: string) => void
-  importInvestments: (invs: Omit<Investment, 'id'>[]) => void
+  importInvestments: (invs: Omit<Investment, 'id' | 'userId'>[]) => void
   updateSettings: (settings: Partial<PortfolioState['settings']>) => void
   setYieldPeriod: (period: YieldPeriod) => void
   toggleBroker: (id: string) => void
@@ -87,6 +91,7 @@ const next15Days = new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000).toISOStrin
 const INITIAL_MOCK_DATA: Investment[] = [
   {
     id: '1',
+    userId: '2',
     title: 'Tesouro IPCA+ com Juros Semestrais 2045',
     agent: 'XP Investimentos',
     purchaseDate: '2023-01-15',
@@ -99,6 +104,7 @@ const INITIAL_MOCK_DATA: Investment[] = [
   },
   {
     id: '1-lot2',
+    userId: '2',
     title: 'Tesouro IPCA+ com Juros Semestrais 2045',
     agent: 'XP Investimentos',
     purchaseDate: '2024-05-10',
@@ -111,6 +117,7 @@ const INITIAL_MOCK_DATA: Investment[] = [
   },
   {
     id: '2',
+    userId: '2',
     title: 'Tesouro Selic 2029',
     agent: 'NuInvest',
     purchaseDate: '2023-06-20',
@@ -122,6 +129,7 @@ const INITIAL_MOCK_DATA: Investment[] = [
   },
   {
     id: '3',
+    userId: '3',
     title: 'Tesouro Renda+ 2030',
     agent: 'BTG Pactual',
     purchaseDate: '2024-02-10',
@@ -133,6 +141,7 @@ const INITIAL_MOCK_DATA: Investment[] = [
   },
   {
     id: '6',
+    userId: '2',
     title: 'Tesouro Prefixado Curto',
     agent: 'Órama',
     purchaseDate: '2021-05-10',
@@ -144,6 +153,7 @@ const INITIAL_MOCK_DATA: Investment[] = [
   },
   {
     id: '7',
+    userId: '3',
     title: 'Tesouro Prefixado com Juros Semestrais 2033',
     agent: 'Itaú Corretora',
     purchaseDate: '2023-01-01',
@@ -155,16 +165,16 @@ const INITIAL_MOCK_DATA: Investment[] = [
     hasSemiannualCoupon: true,
   },
   {
-    id: '8',
-    title: 'Tesouro IPCA+ com Juros Semestrais 2030 (CJS)',
+    id: '9',
+    userId: '1',
+    title: 'Tesouro Selic 2029 (Admin User)',
     agent: 'XP Investimentos',
-    purchaseDate: '2024-01-15',
-    maturityDate: '2030-08-15',
-    quantity: 11,
-    purchasePrice: 4200.0,
-    rate: 5.5,
-    type: 'IPCA+',
-    hasSemiannualCoupon: true,
+    purchaseDate: '2024-01-01',
+    maturityDate: '2029-03-01',
+    quantity: 2,
+    purchasePrice: 14000.0,
+    rate: 0.05,
+    type: 'Selic',
   },
 ]
 
@@ -198,14 +208,21 @@ const INITIAL_BROKERS: BrokerConnection[] = [
 const PortfolioContext = createContext<PortfolioState | undefined>(undefined)
 
 export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
-  const [investments, setInvestments] = useState<Investment[]>(() => {
+  const [allInvestments, setAllInvestments] = useState<Investment[]>(() => {
     try {
-      const saved = localStorage.getItem('@tesouro-vision:investments-v2')
+      const saved = localStorage.getItem('@tesouro-vision:investments-all')
       return saved ? JSON.parse(saved) : INITIAL_MOCK_DATA
     } catch {
       return INITIAL_MOCK_DATA
     }
   })
+
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+
+  const investments = useMemo(() => {
+    if (!currentUserId) return []
+    return allInvestments.filter((i) => i.userId === currentUserId)
+  }, [allInvestments, currentUserId])
 
   const [settings, setSettings] = useState(() => {
     try {
@@ -245,33 +262,41 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     try {
-      localStorage.setItem('@tesouro-vision:settings', JSON.stringify(settings))
+      localStorage.setItem('@tesouro-vision:investments-all', JSON.stringify(allInvestments))
     } catch (e) {
-      console.warn('Failed to save settings to local storage', e)
+      console.warn('Failed to save investments to local storage', e)
+    }
+  }, [allInvestments])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('@tesouro-vision:settings', JSON.stringify(settings))
+    } catch {
+      /* intentionally ignored */
     }
   }, [settings])
 
   useEffect(() => {
     try {
       localStorage.setItem('@tesouro-vision:yieldPeriod', JSON.stringify(yieldPeriod))
-    } catch (e) {
-      console.warn('Failed to save yieldPeriod to local storage', e)
+    } catch {
+      /* intentionally ignored */
     }
   }, [yieldPeriod])
 
   useEffect(() => {
     try {
       localStorage.setItem('@tesouro-vision:brokers-v2', JSON.stringify(brokers))
-    } catch (e) {
-      console.warn('Failed to save brokers to local storage', e)
+    } catch {
+      /* intentionally ignored */
     }
   }, [brokers])
 
   useEffect(() => {
     try {
       localStorage.setItem('@tesouro-vision:connection-logs', JSON.stringify(connectionLogs))
-    } catch (e) {
-      console.warn('Failed to save connection logs to local storage', e)
+    } catch {
+      /* intentionally ignored */
     }
   }, [connectionLogs])
 
@@ -300,14 +325,6 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     return data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
   }, [investments])
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('@tesouro-vision:investments-v2', JSON.stringify(investments))
-    } catch (e) {
-      console.warn('Failed to save investments to local storage', e)
-    }
-  }, [investments])
-
   const notifications = useMemo(() => {
     const notifs: Notification[] = []
     const today = new Date()
@@ -329,23 +346,30 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     return notifs
   }, [investments])
 
-  const addInvestment = (inv: Omit<Investment, 'id'>) =>
-    setInvestments((p) => [...p, { ...inv, id: crypto.randomUUID() }])
+  const addInvestment = (inv: Omit<Investment, 'id' | 'userId'>) => {
+    if (!currentUserId) return
+    setAllInvestments((p) => [...p, { ...inv, id: crypto.randomUUID(), userId: currentUserId }])
+  }
+
   const updateInvestment = (id: string, inv: Partial<Investment>) =>
-    setInvestments((p) => p.map((i) => (i.id === id ? { ...i, ...inv } : i)))
-  const deleteInvestment = (id: string) => setInvestments((p) => p.filter((i) => i.id !== id))
-  const importInvestments = (invs: Omit<Investment, 'id'>[]) =>
-    setInvestments((p) => [...p, ...invs.map((i) => ({ ...i, id: crypto.randomUUID() }))])
+    setAllInvestments((p) => p.map((i) => (i.id === id ? { ...i, ...inv } : i)))
+
+  const deleteInvestment = (id: string) => setAllInvestments((p) => p.filter((i) => i.id !== id))
+
+  const importInvestments = (invs: Omit<Investment, 'id' | 'userId'>[]) => {
+    if (!currentUserId) return
+    setAllInvestments((p) => [
+      ...p,
+      ...invs.map((i) => ({ ...i, id: crypto.randomUUID(), userId: currentUserId })),
+    ])
+  }
+
   const updateSettings = (newSettings: Partial<PortfolioState['settings']>) =>
     setSettings((p) => ({ ...p, ...newSettings }))
 
   const addConnectionLog = (log: Omit<ConnectionLog, 'id' | 'timestamp'>) => {
     setConnectionLogs((p) => [
-      {
-        ...log,
-        id: crypto.randomUUID(),
-        timestamp: new Date().toISOString(),
-      },
+      { ...log, id: crypto.randomUUID(), timestamp: new Date().toISOString() },
       ...p,
     ])
   }
@@ -435,31 +459,21 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     const getNextDate = (maturityDateStr?: string) => {
       if (!maturityDateStr) return null
       const [mYear, mMonth, mDay] = maturityDateStr.split('T')[0].split('-').map(Number)
-
       const month1 = mMonth - 1
       const month2 = (mMonth - 1 + 6) % 12
-
       const d1 = new Date(today.getFullYear(), month1, mDay)
       const d2 = new Date(today.getFullYear(), month2, mDay)
-
       if (d1 < today) d1.setFullYear(d1.getFullYear() + 1)
       if (d2 < today) d2.setFullYear(d2.getFullYear() + 1)
-
       const pDate = d1 < d2 ? d1 : d2
-
       const matDate = new Date(mYear, mMonth - 1, mDay)
       if (pDate > matDate) return null
-
       return pDate
     }
 
     eligibleInvestments.forEach((inv) => {
       const pDate = getNextDate(inv.maturityDate || inv.purchaseDate)
-      if (pDate) {
-        if (!nextDate || pDate < nextDate) {
-          nextDate = new Date(pDate)
-        }
-      }
+      if (pDate && (!nextDate || pDate < nextDate)) nextDate = new Date(pDate)
     })
 
     if (!nextDate) return null
@@ -479,7 +493,6 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
             baseVNA * Math.pow(1 + settings.ipcaAverage24m / 100, Math.max(0, yearsToCoupon))
           grossAmount = projectedVna * inv.quantity * 0.02956
         }
-
         const [pYear, pMonth, pDay] = inv.purchaseDate.split('T')[0].split('-').map(Number)
         const purchaseTime = new Date(pYear, pMonth - 1, pDay).getTime()
         const daysElapsed = Math.round((pDate.getTime() - purchaseTime) / 86400000)
@@ -518,7 +531,10 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     PortfolioContext.Provider,
     {
       value: {
+        allInvestments,
         investments,
+        currentUserId,
+        setCurrentUserId,
         settings,
         yieldPeriod,
         brokers,
