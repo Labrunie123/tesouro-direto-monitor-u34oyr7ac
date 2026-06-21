@@ -164,18 +164,6 @@ const INITIAL_MOCK_DATA: Investment[] = [
     type: 'Prefixado',
     hasSemiannualCoupon: true,
   },
-  {
-    id: '9',
-    userId: '1',
-    title: 'Tesouro Selic 2029 (Admin User)',
-    agent: 'XP Investimentos',
-    purchaseDate: '2024-01-01',
-    maturityDate: '2029-03-01',
-    quantity: 2,
-    purchasePrice: 14000.0,
-    rate: 0.05,
-    type: 'Selic',
-  },
 ]
 
 const INITIAL_BROKERS: BrokerConnection[] = [

@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   LineChart,
   Line,
@@ -16,7 +17,14 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import useUserStore from '@/stores/useUserStore'
 
 export default function AdminComparison() {
-  const { users } = useUserStore()
+  const { users, activeRole } = useUserStore()
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    if (activeRole !== 'Admin') {
+      navigate('/')
+    }
+  }, [activeRole, navigate])
 
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
   const [showSelic, setShowSelic] = useState(true)
@@ -29,7 +37,7 @@ export default function AdminComparison() {
     if (timeRange === '1m') months = 1
     if (timeRange === '24m') months = 24
     if (timeRange === '36m') months = 36
-    if (timeRange === 'ytd') months = new Date().getMonth() + 1
+    if (timeRange === 'anos') months = 60
 
     const data = []
 
@@ -154,19 +162,19 @@ export default function AdminComparison() {
                 className="justify-start flex-wrap gap-2"
               >
                 <ToggleGroupItem value="1m" className="text-xs h-8 px-3">
-                  1M
+                  Mês
+                </ToggleGroupItem>
+                <ToggleGroupItem value="anos" className="text-xs h-8 px-3">
+                  Anos
                 </ToggleGroupItem>
                 <ToggleGroupItem value="12m" className="text-xs h-8 px-3">
-                  12M
+                  12 Meses
                 </ToggleGroupItem>
                 <ToggleGroupItem value="24m" className="text-xs h-8 px-3">
-                  24M
+                  24 Meses
                 </ToggleGroupItem>
                 <ToggleGroupItem value="36m" className="text-xs h-8 px-3">
-                  36M
-                </ToggleGroupItem>
-                <ToggleGroupItem value="ytd" className="text-xs h-8 px-3">
-                  YTD
+                  36 Meses
                 </ToggleGroupItem>
               </ToggleGroup>
             </div>

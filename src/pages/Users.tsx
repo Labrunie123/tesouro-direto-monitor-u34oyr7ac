@@ -1,10 +1,10 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { useNavigate, Link } from 'react-router-dom'
 import { Plus, Search, Users as UsersIcon, Eye, Edit, Trash2, Shield } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/hooks/use-toast'
 import useUserStore, { User } from '@/stores/useUserStore'
-import { Link } from 'react-router-dom'
 import {
   Table,
   TableBody,
@@ -23,9 +23,23 @@ import {
 } from '@/components/ui/dialog'
 
 export default function Users() {
-  const { filteredUsers, searchQuery, setSearchQuery, addUser, updateUser, deleteUser } =
-    useUserStore()
+  const {
+    filteredUsers,
+    searchQuery,
+    setSearchQuery,
+    addUser,
+    updateUser,
+    deleteUser,
+    activeRole,
+  } = useUserStore()
   const { toast } = useToast()
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    if (activeRole !== 'Admin') {
+      navigate('/')
+    }
+  }, [activeRole, navigate])
 
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingUser, setEditingUser] = useState<User | null>(null)

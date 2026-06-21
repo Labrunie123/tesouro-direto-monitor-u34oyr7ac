@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ShieldAlert, KeyRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,8 +15,15 @@ import { useToast } from '@/hooks/use-toast'
 import useUserStore from '@/stores/useUserStore'
 
 export default function AdminSettings() {
-  const { activeUser, updateUser } = useUserStore()
+  const { activeUser, activeRole, updateUser } = useUserStore()
   const { toast } = useToast()
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    if (activeRole !== 'Admin') {
+      navigate('/')
+    }
+  }, [activeRole, navigate])
 
   const [cpf, setCpf] = useState('')
   const [userPassword, setUserPassword] = useState('')

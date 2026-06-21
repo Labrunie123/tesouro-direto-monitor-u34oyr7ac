@@ -24,9 +24,14 @@ export default function Login() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (login(cpf, password)) {
+    const role = login(cpf, password)
+    if (role) {
       toast({ title: 'Acesso liberado com sucesso' })
-      navigate('/')
+      if (role === 'Admin') {
+        navigate('/admin/comparison')
+      } else {
+        navigate('/')
+      }
     } else {
       toast({ title: 'Credenciais inválidas', variant: 'destructive' })
     }

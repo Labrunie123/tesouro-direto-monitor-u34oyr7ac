@@ -17,7 +17,7 @@ interface UserState {
   activeRole: 'Admin' | 'User' | null
   searchQuery: string
   filteredUsers: User[]
-  login: (cpf: string, pass: string) => boolean
+  login: (cpf: string, pass: string) => 'Admin' | 'User' | false
   logout: () => void
   setSearchQuery: (query: string) => void
   addUser: (user: Omit<User, 'id'>) => void
@@ -91,7 +91,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
     [users, activeUserId],
   )
 
-  const login = (cpf: string, pass: string) => {
+  const login = (cpf: string, pass: string): 'Admin' | 'User' | false => {
     const user = users.find((u) => u.cpf === cpf)
     if (!user) return false
 
@@ -100,7 +100,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
       setActiveRole('Admin')
       localStorage.setItem('@tesouro-vision:activeUserId', user.id)
       localStorage.setItem('@tesouro-vision:activeRole', 'Admin')
-      return true
+      return 'Admin'
     }
 
     if (user.password === pass) {
@@ -108,7 +108,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
       setActiveRole('User')
       localStorage.setItem('@tesouro-vision:activeUserId', user.id)
       localStorage.setItem('@tesouro-vision:activeRole', 'User')
-      return true
+      return 'User'
     }
 
     return false
