@@ -29,51 +29,22 @@ import { useToast } from '@/hooks/use-toast'
 import usePortfolioStore, { BondType } from '@/stores/usePortfolioStore'
 import { parseExcelDate, formatCurrency, formatPercent } from '@/lib/formatters'
 
-type LocalBroker = {
-  id: string
-  name: string
-  logo: string
-  status: 'connected' | 'disconnected'
-  lastSync?: string
-}
-
-const INITIAL_BROKERS: LocalBroker[] = [
-  {
-    id: 'xp',
-    name: 'XP Investimentos',
-    logo: 'https://img.usecurling.com/i?q=finance&color=black',
-    status: 'disconnected',
-  },
-  {
-    id: 'btg',
-    name: 'BTG Pactual',
-    logo: 'https://img.usecurling.com/i?q=bank&color=blue',
-    status: 'disconnected',
-  },
-  {
-    id: 'nuinvest',
-    name: 'NuInvest',
-    logo: 'https://img.usecurling.com/i?q=wallet&color=purple',
-    status: 'disconnected',
-  },
-  {
-    id: 'inter',
-    name: 'Banco Inter',
-    logo: 'https://img.usecurling.com/i?q=globe&color=orange',
-    status: 'disconnected',
-  },
-]
-
 export default function Import() {
-  const { importInvestments, settings, updateSettings, connectionLogs, addConnectionLog } =
-    usePortfolioStore()
+  const {
+    importInvestments,
+    settings,
+    updateSettings,
+    connectionLogs,
+    addConnectionLog,
+    brokers,
+    setBrokerStatus,
+  } = usePortfolioStore()
   const { toast } = useToast()
   const [isDragging, setIsDragging] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
   const [ipcaInput, setIpcaInput] = useState(settings.ipcaAverage24m.toString())
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [localBrokers, setLocalBrokers] = useState<LocalBroker[]>(INITIAL_BROKERS)
   const [authModalOpen, setAuthModalOpen] = useState(false)
   const [selectedBrokerId, setSelectedBrokerId] = useState<string | null>(null)
   const [authForm, setAuthForm] = useState({ user: '', password: '', token: '' })
@@ -81,7 +52,7 @@ export default function Import() {
   const [assetsModalOpen, setAssetsModalOpen] = useState(false)
   const [availableAssets, setAvailableAssets] = useState<any[]>([])
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([])
-  const [activeBrokerForAssets, setActiveBrokerForAssets] = useState<LocalBroker | null>(null)
+  const [activeBrokerForAssets, setActiveBrokerForAssets] = useState<any | null>(null)
 
   const processCSV = (text: string) => {
     try {
@@ -159,10 +130,8 @@ export default function Import() {
   }
 
   const handleDisconnect = (id: string) => {
-    const broker = localBrokers.find((b) => b.id === id)
-    setLocalBrokers((prev) =>
-      prev.map((b) => (b.id === id ? { ...b, status: 'disconnected', lastSync: undefined } : b)),
-    )
+    const broker = brokers.find((b) => b.id === id)
+    setBrokerStatus(id, 'disconnected')
     if (broker) {
       addConnectionLog({ brokerId: broker.id, brokerName: broker.name, action: 'disconnected' })
     }
@@ -177,22 +146,16 @@ export default function Import() {
   const submitAuth = (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedBrokerId || !isAuthFormValid) return
-    const broker = localBrokers.find((b) => b.id === selectedBrokerId)
+    const broker = brokers.find((b) => b.id === selectedBrokerId)
     if (!broker) return
 
-    setLocalBrokers((prev) =>
-      prev.map((b) =>
-        b.id === selectedBrokerId
-          ? { ...b, status: 'connected', lastSync: new Date().toISOString() }
-          : b,
-      ),
-    )
+    setBrokerStatus(selectedBrokerId, 'connected')
     addConnectionLog({ brokerId: broker.id, brokerName: broker.name, action: 'connected' })
     setAuthModalOpen(false)
     toast({ title: `Conectado com sucesso!` })
   }
 
-  const handleOpenAssets = (broker: LocalBroker) => {
+  const handleOpenAssets = (broker: any) => {
     setActiveBrokerForAssets(broker)
     const mocks = [
       {
@@ -224,6 +187,56 @@ export default function Import() {
         purchasePrice: 850.0,
         rate: 11.2,
         type: 'Prefixado' as BondType,
+      },
+      {
+        id: crypto.randomUUID(),
+        title: 'Tesouro Renda+ 2030',
+        agent: broker.name,
+        purchaseDate: new Date().toISOString().split('T')[0],
+        quantity: 15,
+        purchasePrice: 500.0,
+        rate: 6.0,
+        type: 'Renda+' as BondType,
+      },
+      {
+        id: crypto.randomUUID(),
+        title: 'Tesouro IPCA+ com Juros Semestrais 2045',
+        agent: broker.name,
+        purchaseDate: new Date().toISOString().split('T')[0],
+        quantity: 8,
+        purchasePrice: 1200.0,
+        rate: 5.8,
+        type: 'IPCA+' as BondType,
+      },
+      {
+        id: crypto.randomUUID(),
+        title: 'Tesouro Educa+ 2035',
+        agent: broker.name,
+        purchaseDate: new Date().toISOString().split('T')[0],
+        quantity: 20,
+        purchasePrice: 450.0,
+        rate: 6.2,
+        type: 'Educa+' as BondType,
+      },
+      {
+        id: crypto.randomUUID(),
+        title: 'Tesouro Prefixado com Juros Semestrais 2033',
+        agent: broker.name,
+        purchaseDate: new Date().toISOString().split('T')[0],
+        quantity: 6,
+        purchasePrice: 980.0,
+        rate: 10.5,
+        type: 'Prefixado' as BondType,
+      },
+      {
+        id: crypto.randomUUID(),
+        title: 'Tesouro Selic 2026',
+        agent: broker.name,
+        purchaseDate: new Date().toISOString().split('T')[0],
+        quantity: 3,
+        purchasePrice: 14200.0,
+        rate: 0.05,
+        type: 'Selic' as BondType,
       },
     ]
     setAvailableAssets(mocks)
@@ -273,7 +286,7 @@ export default function Import() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {localBrokers.map((broker) => (
+            {brokers.map((broker) => (
               <div
                 key={broker.id}
                 className={`flex flex-col items-center justify-center p-6 border rounded-xl transition-all ${
@@ -296,7 +309,7 @@ export default function Import() {
                       : 'mb-4 text-[10px]'
                   }
                 >
-                  {broker.status === 'connected' ? 'Connected' : 'Disconnected'}
+                  {broker.status === 'connected' ? 'Conectado' : 'Desconectado'}
                 </Badge>
                 {broker.status === 'connected' && broker.lastSync && (
                   <p className="text-xs text-muted-foreground mb-4 text-center">
@@ -331,7 +344,7 @@ export default function Import() {
                       className="w-full gap-2"
                       onClick={() => handleConnectClick(broker.id)}
                     >
-                      <LinkIcon className="h-3 w-3" /> Connect
+                      <LinkIcon className="h-3 w-3" /> Conectar
                     </Button>
                   )}
                 </div>
@@ -512,7 +525,7 @@ export default function Import() {
               <DialogTitle>Autenticação da Corretora</DialogTitle>
               <DialogDescription>
                 Insira suas credenciais para conectar à{' '}
-                {localBrokers.find((b) => b.id === selectedBrokerId)?.name}.
+                {brokers.find((b) => b.id === selectedBrokerId)?.name}.
               </DialogDescription>
             </DialogHeader>
 

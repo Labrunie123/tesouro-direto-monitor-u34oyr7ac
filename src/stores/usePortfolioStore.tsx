@@ -37,7 +37,7 @@ export interface BrokerConnection {
   name: string
   status: 'connected' | 'disconnected'
   lastSync?: string
-  logo?: string
+  logo: string
 }
 
 export interface Dividend {
@@ -72,6 +72,7 @@ interface PortfolioState {
   updateSettings: (settings: Partial<PortfolioState['settings']>) => void
   setYieldPeriod: (period: YieldPeriod) => void
   toggleBroker: (id: string) => void
+  setBrokerStatus: (id: string, status: 'connected' | 'disconnected') => void
   totalInvested: number
   currentValue: number
   portfolioYield: number
@@ -169,17 +170,28 @@ const INITIAL_MOCK_DATA: Investment[] = [
 
 const INITIAL_BROKERS: BrokerConnection[] = [
   {
-    id: 'b1',
-    name: 'XP',
+    id: 'xp',
+    name: 'XP Investimentos',
+    logo: 'https://img.usecurling.com/i?q=finance&color=black',
     status: 'disconnected',
-    logo: 'https://img.usecurling.com/i?q=investment&color=black&shape=fill',
   },
   {
-    id: 'b2',
-    name: 'BTG',
-    status: 'connected',
-    lastSync: new Date().toISOString(),
-    logo: 'https://img.usecurling.com/i?q=bank&color=blue&shape=fill',
+    id: 'btg',
+    name: 'BTG Pactual',
+    logo: 'https://img.usecurling.com/i?q=bank&color=blue',
+    status: 'disconnected',
+  },
+  {
+    id: 'nuinvest',
+    name: 'NuInvest',
+    logo: 'https://img.usecurling.com/i?q=wallet&color=purple',
+    status: 'disconnected',
+  },
+  {
+    id: 'inter',
+    name: 'Banco Inter',
+    logo: 'https://img.usecurling.com/i?q=globe&color=orange',
+    status: 'disconnected',
   },
 ]
 
@@ -215,7 +227,7 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
 
   const [brokers, setBrokers] = useState<BrokerConnection[]>(() => {
     try {
-      const saved = localStorage.getItem('@tesouro-vision:brokers')
+      const saved = localStorage.getItem('@tesouro-vision:brokers-v2')
       return saved ? JSON.parse(saved) : INITIAL_BROKERS
     } catch {
       return INITIAL_BROKERS
@@ -249,7 +261,7 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     try {
-      localStorage.setItem('@tesouro-vision:brokers', JSON.stringify(brokers))
+      localStorage.setItem('@tesouro-vision:brokers-v2', JSON.stringify(brokers))
     } catch (e) {
       console.warn('Failed to save brokers to local storage', e)
     }
@@ -346,6 +358,19 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
               ...b,
               status: b.status === 'connected' ? 'disconnected' : 'connected',
               lastSync: b.status === 'disconnected' ? new Date().toISOString() : undefined,
+            }
+          : b,
+      ),
+    )
+
+  const setBrokerStatus = (id: string, status: 'connected' | 'disconnected') =>
+    setBrokers((p) =>
+      p.map((b) =>
+        b.id === id
+          ? {
+              ...b,
+              status,
+              lastSync: status === 'connected' ? new Date().toISOString() : undefined,
             }
           : b,
       ),
@@ -508,6 +533,7 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
         updateSettings,
         setYieldPeriod,
         toggleBroker,
+        setBrokerStatus,
         totalInvested,
         currentValue,
         portfolioYield,
