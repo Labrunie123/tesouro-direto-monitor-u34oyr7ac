@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useMemo, ReactNode } from 'react'
+import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react'
 
 export interface User {
   id: string
@@ -27,7 +27,22 @@ const INITIAL_USERS: User[] = [
 const UserContext = createContext<UserState | undefined>(undefined)
 
 export const UserProvider = ({ children }: { children: ReactNode }) => {
-  const [users, setUsers] = useState<User[]>(INITIAL_USERS)
+  const [users, setUsers] = useState<User[]>(() => {
+    try {
+      const saved = localStorage.getItem('@tesouro-vision:users')
+      return saved ? JSON.parse(saved) : INITIAL_USERS
+    } catch {
+      return INITIAL_USERS
+    }
+  })
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('@tesouro-vision:users', JSON.stringify(users))
+    } catch (e) {
+      console.warn('Failed to save users to local storage', e)
+    }
+  }, [users])
   const [searchQuery, setSearchQuery] = useState('')
 
   const filteredUsers = useMemo(() => {

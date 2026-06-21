@@ -177,16 +177,64 @@ const PortfolioContext = createContext<PortfolioState | undefined>(undefined)
 
 export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
   const [investments, setInvestments] = useState<Investment[]>(() => {
-    const saved = localStorage.getItem('@tesouro-vision:investments-v2')
-    return saved ? JSON.parse(saved) : INITIAL_MOCK_DATA
+    try {
+      const saved = localStorage.getItem('@tesouro-vision:investments-v2')
+      return saved ? JSON.parse(saved) : INITIAL_MOCK_DATA
+    } catch {
+      return INITIAL_MOCK_DATA
+    }
   })
 
-  const [settings, setSettings] = useState({
-    lastSync: new Date().toISOString(),
-    ipcaAverage24m: 4.5,
+  const [settings, setSettings] = useState(() => {
+    try {
+      const saved = localStorage.getItem('@tesouro-vision:settings')
+      return saved ? JSON.parse(saved) : { lastSync: new Date().toISOString(), ipcaAverage24m: 4.5 }
+    } catch {
+      return { lastSync: new Date().toISOString(), ipcaAverage24m: 4.5 }
+    }
   })
-  const [yieldPeriod, setYieldPeriod] = useState<YieldPeriod>('all')
-  const [brokers, setBrokers] = useState<BrokerConnection[]>(INITIAL_BROKERS)
+
+  const [yieldPeriod, setYieldPeriod] = useState<YieldPeriod>(() => {
+    try {
+      const saved = localStorage.getItem('@tesouro-vision:yieldPeriod')
+      return saved ? JSON.parse(saved) : 'all'
+    } catch {
+      return 'all'
+    }
+  })
+
+  const [brokers, setBrokers] = useState<BrokerConnection[]>(() => {
+    try {
+      const saved = localStorage.getItem('@tesouro-vision:brokers')
+      return saved ? JSON.parse(saved) : INITIAL_BROKERS
+    } catch {
+      return INITIAL_BROKERS
+    }
+  })
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('@tesouro-vision:settings', JSON.stringify(settings))
+    } catch (e) {
+      console.warn('Failed to save settings to local storage', e)
+    }
+  }, [settings])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('@tesouro-vision:yieldPeriod', JSON.stringify(yieldPeriod))
+    } catch (e) {
+      console.warn('Failed to save yieldPeriod to local storage', e)
+    }
+  }, [yieldPeriod])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('@tesouro-vision:brokers', JSON.stringify(brokers))
+    } catch (e) {
+      console.warn('Failed to save brokers to local storage', e)
+    }
+  }, [brokers])
 
   const dividends = useMemo(() => {
     const data: Dividend[] = []
@@ -213,10 +261,13 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     return data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
   }, [investments])
 
-  useEffect(
-    () => localStorage.setItem('@tesouro-vision:investments-v2', JSON.stringify(investments)),
-    [investments],
-  )
+  useEffect(() => {
+    try {
+      localStorage.setItem('@tesouro-vision:investments-v2', JSON.stringify(investments))
+    } catch (e) {
+      console.warn('Failed to save investments to local storage', e)
+    }
+  }, [investments])
 
   const notifications = useMemo(() => {
     const notifs: Notification[] = []
