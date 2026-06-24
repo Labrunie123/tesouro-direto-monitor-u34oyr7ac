@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'
-import { Outlet, Link, useLocation, Navigate } from 'react-router-dom'
+import { Outlet, Link, useLocation, Navigate, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
   Wallet,
@@ -13,6 +13,7 @@ import {
   HandCoins,
   Users,
   LogOut,
+  UserCircle2,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -37,14 +38,19 @@ import { cn } from '@/lib/utils'
 
 export default function Layout() {
   const location = useLocation()
+  const navigate = useNavigate()
   const { settings, notifications, setCurrentUserId } = usePortfolioStore()
-  const { activeUser, activeRole, logout } = useUserStore()
+  const { activeUser, activeRole, impersonatedUser, setImpersonatedUserId, logout } = useUserStore()
 
   useEffect(() => {
-    if (activeUser && !location.pathname.includes('/admin/users/')) {
-      setCurrentUserId(activeUser.id)
+    if (activeUser) {
+      if (activeRole === 'Admin' && impersonatedUser) {
+        setCurrentUserId(impersonatedUser.id)
+      } else if (!location.pathname.includes('/admin/users/')) {
+        setCurrentUserId(activeUser.id)
+      }
     }
-  }, [activeUser, setCurrentUserId, location.pathname])
+  }, [activeUser, activeRole, impersonatedUser, setCurrentUserId, location.pathname])
 
   if (!activeUser) {
     return <Navigate to="/login" replace />
@@ -130,6 +136,28 @@ export default function Layout() {
         </Sidebar>
 
         <SidebarInset className="flex w-full flex-1 flex-col overflow-hidden bg-muted/20">
+          {impersonatedUser && (
+            <div className="bg-primary text-primary-foreground px-4 py-2.5 flex items-center justify-between shadow-md z-20">
+              <div className="flex items-center gap-2">
+                <UserCircle2 className="h-5 w-5" />
+                <span className="text-sm font-medium">
+                  Visualizando sistema como:{' '}
+                  <strong className="ml-1">{impersonatedUser.name}</strong>
+                </span>
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="h-8 text-xs font-semibold hover:bg-secondary/90"
+                onClick={() => {
+                  setImpersonatedUserId(null)
+                  navigate('/')
+                }}
+              >
+                Sair da visualização
+              </Button>
+            </div>
+          )}
           <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm md:px-8">
             <SidebarTrigger className="-ml-1" />
             <div className="flex flex-1 items-center justify-between">

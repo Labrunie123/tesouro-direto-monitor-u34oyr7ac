@@ -27,6 +27,7 @@ export default function Users() {
     filteredUsers,
     searchQuery,
     setSearchQuery,
+    setImpersonatedUserId,
     addUser,
     updateUser,
     deleteUser,
@@ -149,10 +150,23 @@ export default function Users() {
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">
-                    <Button variant="outline" size="icon" asChild title="Ver Carteira">
-                      <Link to={`/admin/users/${user.id}/portfolio`}>
-                        <Eye className="h-4 w-4" />
-                      </Link>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      title="Visualizar como Usuário"
+                      onClick={() => {
+                        if (user.role !== 'Admin') {
+                          setImpersonatedUserId(user.id)
+                          navigate('/')
+                        } else {
+                          toast({
+                            title: 'Não é possível visualizar como o administrador.',
+                            variant: 'destructive',
+                          })
+                        }
+                      }}
+                    >
+                      <Eye className="h-4 w-4" />
                     </Button>
                     {user.role !== 'Admin' && (
                       <Button

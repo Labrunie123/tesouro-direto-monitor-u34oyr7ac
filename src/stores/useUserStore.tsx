@@ -15,10 +15,13 @@ interface UserState {
   users: User[]
   activeUser: User | null
   activeRole: 'Admin' | 'User' | null
+  impersonatedUserId: string | null
+  impersonatedUser: User | null
   searchQuery: string
   filteredUsers: User[]
   login: (cpf: string, pass: string) => 'Admin' | 'User' | false
   logout: () => void
+  setImpersonatedUserId: (id: string | null) => void
   setSearchQuery: (query: string) => void
   addUser: (user: Omit<User, 'id'>) => void
   updateUser: (id: string, user: Partial<User>) => void
@@ -85,10 +88,16 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
   }, [users])
 
   const [searchQuery, setSearchQuery] = useState('')
+  const [impersonatedUserId, setImpersonatedUserId] = useState<string | null>(null)
 
   const activeUser = useMemo(
     () => users.find((u) => u.id === activeUserId) || null,
     [users, activeUserId],
+  )
+
+  const impersonatedUser = useMemo(
+    () => users.find((u) => u.id === impersonatedUserId) || null,
+    [users, impersonatedUserId],
   )
 
   const login = (cpf: string, pass: string): 'Admin' | 'User' | false => {
@@ -137,6 +146,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
   const logout = () => {
     setActiveUserId(null)
     setActiveRole(null)
+    setImpersonatedUserId(null)
     localStorage.removeItem('@tesouro-vision:activeUserId')
     localStorage.removeItem('@tesouro-vision:activeRole')
   }
@@ -169,10 +179,13 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
         users,
         activeUser,
         activeRole,
+        impersonatedUserId,
+        impersonatedUser,
         searchQuery,
         filteredUsers,
         login,
         logout,
+        setImpersonatedUserId,
         setSearchQuery,
         addUser,
         updateUser,
