@@ -90,6 +90,31 @@ const next15Days = new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000).toISOStrin
 
 const INITIAL_MOCK_DATA: Investment[] = [
   {
+    id: '1-admin',
+    userId: '1',
+    title: 'Tesouro IPCA+ com Juros Semestrais 2045',
+    agent: 'XP Investimentos',
+    purchaseDate: '2022-01-15',
+    maturityDate: '2045-05-15',
+    quantity: 20,
+    purchasePrice: 1100.5,
+    rate: 5.8,
+    type: 'IPCA+',
+    hasSemiannualCoupon: true,
+  },
+  {
+    id: '2-admin',
+    userId: '1',
+    title: 'Tesouro Selic 2029',
+    agent: 'BTG Pactual',
+    purchaseDate: '2024-01-10',
+    maturityDate: '2029-03-01',
+    quantity: 10,
+    purchasePrice: 14000.0,
+    rate: 0.15,
+    type: 'Selic',
+  },
+  {
     id: '1',
     userId: '2',
     title: 'Tesouro IPCA+ com Juros Semestrais 2045',

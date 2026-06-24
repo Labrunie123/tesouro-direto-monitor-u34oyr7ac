@@ -39,11 +39,7 @@ export default function Login() {
 
     if (role) {
       toast({ title: 'Acesso liberado com sucesso' })
-      if (role === 'Admin') {
-        navigate('/admin/comparison')
-      } else {
-        navigate('/')
-      }
+      navigate('/')
     } else {
       setError(true)
       toast({ title: 'Credenciais inválidas', variant: 'destructive' })

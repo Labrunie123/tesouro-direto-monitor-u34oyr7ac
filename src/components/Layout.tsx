@@ -41,30 +41,21 @@ export default function Layout() {
   const { activeUser, activeRole, logout } = useUserStore()
 
   useEffect(() => {
-    if (activeRole === 'User' && activeUser) {
+    if (activeUser && !location.pathname.includes('/admin/users/')) {
       setCurrentUserId(activeUser.id)
-    } else if (activeRole === 'Admin' && !location.pathname.includes('/admin/users/')) {
-      setCurrentUserId(null)
     }
-  }, [activeUser, activeRole, setCurrentUserId, location.pathname])
+  }, [activeUser, setCurrentUserId, location.pathname])
 
   if (!activeUser) {
     return <Navigate to="/login" replace />
   }
 
-  if (activeRole === 'Admin' && (location.pathname === '/' || location.pathname === '/portfolio')) {
-    return <Navigate to="/users" replace />
-  }
-
-  if (activeRole === 'User' && location.pathname.startsWith('/admin')) {
+  if (
+    activeRole === 'User' &&
+    (location.pathname.startsWith('/admin') || location.pathname === '/users')
+  ) {
     return <Navigate to="/" replace />
   }
-
-  const adminNav = [
-    { title: 'Usuários', icon: Users, path: '/users' },
-    { title: 'Comparativo', icon: BarChart3, path: '/admin/comparison' },
-    { title: 'Configurações', icon: Settings, path: '/admin/settings' },
-  ]
 
   const userNav = [
     { title: 'Dashboard', icon: LayoutDashboard, path: '/' },
@@ -74,6 +65,13 @@ export default function Layout() {
     { title: 'Benchmarks', icon: BarChart3, path: '/benchmarks' },
     { title: 'Simulador', icon: Calculator, path: '/simulator' },
     { title: 'Importar Dados', icon: Download, path: '/import' },
+  ]
+
+  const adminNav = [
+    ...userNav,
+    { title: 'Gestão de Usuários', icon: Users, path: '/users' },
+    { title: 'Comparativo Admin', icon: BarChart3, path: '/admin/comparison' },
+    { title: 'Configurações', icon: Settings, path: '/admin/settings' },
   ]
 
   const navItems = activeRole === 'Admin' ? adminNav : userNav
@@ -140,82 +138,78 @@ export default function Layout() {
                   {navItems.find((i) => i.path === location.pathname)?.title ||
                     (activeRole === 'Admin' ? 'Administração' : 'Visão Geral')}
                 </h1>
-                {activeRole === 'User' && (
-                  <div className="hidden items-center gap-1.5 rounded-full bg-secondary/50 px-3 py-1 text-xs font-medium text-muted-foreground md:flex">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                    </span>
-                    VNA Atualizado: {formatDate(settings.lastSync)}
-                  </div>
-                )}
+                <div className="hidden items-center gap-1.5 rounded-full bg-secondary/50 px-3 py-1 text-xs font-medium text-muted-foreground md:flex">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  VNA Atualizado: {formatDate(settings.lastSync)}
+                </div>
               </div>
               <div className="flex items-center gap-2">
-                {activeRole === 'User' && (
-                  <>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant="ghost" size="icon" className="relative mr-2">
-                          <Bell className="h-5 w-5" />
-                          {notifications.length > 0 && (
-                            <Badge
-                              variant="destructive"
-                              className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-[10px] rounded-full"
-                            >
-                              {notifications.length}
-                            </Badge>
-                          )}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent align="end" className="w-80">
-                        <div className="space-y-2">
-                          <h4 className="font-medium text-sm">Notificações Inteligentes</h4>
-                          {notifications.length === 0 ? (
-                            <p className="text-sm text-muted-foreground mt-2">
-                              Nenhuma notificação pendente.
-                            </p>
-                          ) : (
-                            <div className="space-y-3 mt-4">
-                              {notifications.map((n) => (
-                                <div
-                                  key={n.id}
-                                  className="flex flex-col gap-1 border-b border-border/50 pb-3 last:border-0 last:pb-0"
-                                >
-                                  <span className="text-sm font-medium flex items-center gap-2">
-                                    <span
-                                      className={cn(
-                                        'h-2 w-2 rounded-full shrink-0',
-                                        n.type === 'maturity' ? 'bg-destructive' : 'bg-primary',
-                                      )}
-                                    />
-                                    {n.title}
-                                  </span>
-                                  <span className="text-xs text-muted-foreground ml-4">
-                                    {n.message}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </PopoverContent>
-                    </Popover>
+                <>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="ghost" size="icon" className="relative mr-2">
+                        <Bell className="h-5 w-5" />
+                        {notifications.length > 0 && (
+                          <Badge
+                            variant="destructive"
+                            className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-[10px] rounded-full"
+                          >
+                            {notifications.length}
+                          </Badge>
+                        )}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-80">
+                      <div className="space-y-2">
+                        <h4 className="font-medium text-sm">Notificações Inteligentes</h4>
+                        {notifications.length === 0 ? (
+                          <p className="text-sm text-muted-foreground mt-2">
+                            Nenhuma notificação pendente.
+                          </p>
+                        ) : (
+                          <div className="space-y-3 mt-4">
+                            {notifications.map((n) => (
+                              <div
+                                key={n.id}
+                                className="flex flex-col gap-1 border-b border-border/50 pb-3 last:border-0 last:pb-0"
+                              >
+                                <span className="text-sm font-medium flex items-center gap-2">
+                                  <span
+                                    className={cn(
+                                      'h-2 w-2 rounded-full shrink-0',
+                                      n.type === 'maturity' ? 'bg-destructive' : 'bg-primary',
+                                    )}
+                                  />
+                                  {n.title}
+                                </span>
+                                <span className="text-xs text-muted-foreground ml-4">
+                                  {n.message}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
 
-                    <Button size="sm" variant="outline" className="hidden md:flex gap-2" asChild>
-                      <Link to="/import">
-                        <Settings className="h-4 w-4" />
-                        Ajustes
-                      </Link>
-                    </Button>
-                    <Button size="sm" className="gap-2 shadow-sm" asChild>
-                      <Link to="/portfolio">
-                        <Plus className="h-4 w-4" />
-                        <span className="hidden sm:inline">Adicionar Título</span>
-                        <span className="sm:hidden">Novo</span>
-                      </Link>
-                    </Button>
-                  </>
-                )}
+                  <Button size="sm" variant="outline" className="hidden md:flex gap-2" asChild>
+                    <Link to="/import">
+                      <Settings className="h-4 w-4" />
+                      Ajustes
+                    </Link>
+                  </Button>
+                  <Button size="sm" className="gap-2 shadow-sm" asChild>
+                    <Link to="/portfolio">
+                      <Plus className="h-4 w-4" />
+                      <span className="hidden sm:inline">Adicionar Título</span>
+                      <span className="sm:hidden">Novo</span>
+                    </Link>
+                  </Button>
+                </>
               </div>
             </div>
           </header>
