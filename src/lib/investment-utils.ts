@@ -1,28 +1,31 @@
-import type { Investment } from '@/stores/usePortfolioStore'
+import { Investment } from '@/stores/usePortfolioStore'
 
-export interface InvestmentMetrics {
+export interface LotMetrics {
   iv: number
   gv: number
-  days: number
   tr: number
-  profit: number
-  tax: number
+  ir: number
   nv: number
+  netYield: number
+}
+
+export function getTaxRate(purchaseDate: string): number {
+  const days = Math.floor((Date.now() - new Date(purchaseDate).getTime()) / (1000 * 60 * 60 * 24))
+  if (days <= 180) return 0.225
+  if (days <= 360) return 0.2
+  if (days <= 720) return 0.175
+  return 0.15
 }
 
 export function calculateMetrics(
   inv: Investment,
-  calculateCurrentValue: (inv: Investment) => number,
-): InvestmentMetrics {
+  calculateCurrentValue: (inv: Investment, targetDate?: Date) => number,
+): LotMetrics {
   const iv = inv.purchasePrice * inv.quantity
   const gv = calculateCurrentValue(inv) * inv.quantity
-  const days = Math.floor((new Date().getTime() - new Date(inv.purchaseDate).getTime()) / 86400000)
-  let tr = 0.15
-  if (days <= 180) tr = 0.225
-  else if (days <= 360) tr = 0.2
-  else if (days <= 720) tr = 0.175
-  const profit = gv - iv
-  const tax = profit > 0 ? profit * tr : 0
-  const nv = gv - tax
-  return { iv, gv, days, tr, profit, tax, nv }
+  const tr = getTaxRate(inv.purchaseDate)
+  const ir = gv * tr
+  const nv = gv - ir
+  const netYield = iv > 0 ? ((nv - iv) / iv) * 100 : 0
+  return { iv, gv, tr, ir, nv, netYield }
 }
