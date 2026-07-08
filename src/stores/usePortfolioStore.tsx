@@ -57,11 +57,19 @@ export interface ConnectionLog {
   timestamp: string
 }
 
+export interface UserBroker {
+  id: string
+  userId: string
+  name: string
+}
+
 interface PortfolioState {
   allInvestments: Investment[]
   investments: Investment[]
   currentUserId: string | null
   setCurrentUserId: (id: string | null) => void
+  userBrokers: UserBroker[]
+  addBroker: (name: string) => void
   settings: { lastSync: string; ipcaAverage24m: number }
   yieldPeriod: YieldPeriod
   brokers: BrokerConnection[]
@@ -218,6 +226,16 @@ const INITIAL_BROKERS: BrokerConnection[] = [
   },
 ]
 
+const INITIAL_USER_BROKERS: UserBroker[] = [
+  { id: 'ub-1-1', userId: '1', name: 'XP Investimentos' },
+  { id: 'ub-1-2', userId: '1', name: 'BTG Pactual' },
+  { id: 'ub-2-1', userId: '2', name: 'XP Investimentos' },
+  { id: 'ub-2-2', userId: '2', name: 'NuInvest' },
+  { id: 'ub-2-3', userId: '2', name: 'Órama' },
+  { id: 'ub-3-1', userId: '3', name: 'BTG Pactual' },
+  { id: 'ub-3-2', userId: '3', name: 'Itaú Corretora' },
+]
+
 const PortfolioContext = createContext<PortfolioState | undefined>(undefined)
 
 export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
@@ -232,10 +250,24 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
 
+  const [allUserBrokers, setAllUserBrokers] = useState<UserBroker[]>(() => {
+    try {
+      const saved = localStorage.getItem('@tesouro-vision:user-brokers')
+      return saved ? JSON.parse(saved) : INITIAL_USER_BROKERS
+    } catch {
+      return INITIAL_USER_BROKERS
+    }
+  })
+
   const investments = useMemo(() => {
     if (!currentUserId) return []
     return allInvestments.filter((i) => i.userId === currentUserId)
   }, [allInvestments, currentUserId])
+
+  const userBrokers = useMemo(() => {
+    if (!currentUserId) return []
+    return allUserBrokers.filter((b) => b.userId === currentUserId)
+  }, [allUserBrokers, currentUserId])
 
   const [settings, setSettings] = useState(() => {
     try {
@@ -313,6 +345,14 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [connectionLogs])
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('@tesouro-vision:user-brokers', JSON.stringify(allUserBrokers))
+    } catch {
+      /* intentionally ignored */
+    }
+  }, [allUserBrokers])
+
   const dividends = useMemo(() => {
     const data: Dividend[] = []
     const currentDate = new Date()
@@ -385,6 +425,17 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
       { ...log, id: crypto.randomUUID(), timestamp: new Date().toISOString() },
       ...p,
     ])
+  }
+
+  const addBroker = (name: string) => {
+    if (!currentUserId || !name.trim()) return
+    setAllUserBrokers((p) => {
+      const exists = p.some(
+        (b) => b.userId === currentUserId && b.name.toLowerCase() === name.trim().toLowerCase(),
+      )
+      if (exists) return p
+      return [...p, { id: crypto.randomUUID(), userId: currentUserId, name: name.trim() }]
+    })
   }
 
   const toggleBroker = (id: string) =>
@@ -548,6 +599,8 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
         investments,
         currentUserId,
         setCurrentUserId,
+        userBrokers,
+        addBroker,
         settings,
         yieldPeriod,
         brokers,

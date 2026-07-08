@@ -31,7 +31,7 @@ import usePortfolioStore, { Investment } from '@/stores/usePortfolioStore'
 
 const formSchema = z.object({
   title: z.string().min(3, 'Título muito curto'),
-  agent: z.string().min(2, 'Informe a corretora'),
+  agent: z.string().default('__none__'),
   purchaseDate: z.string().min(1, 'Data obrigatória'),
   maturityDate: z.string().optional(),
   quantity: z.coerce.number().positive('Quantidade deve ser > 0'),
@@ -56,13 +56,13 @@ export function PortfolioFormDialog({
   prefillTitle,
   onSubmit,
 }: Props) {
-  const { investments } = usePortfolioStore()
+  const { investments, userBrokers } = usePortfolioStore()
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       title: '',
-      agent: '',
+      agent: '__none__',
       purchaseDate: '',
       maturityDate: '',
       quantity: 1,
@@ -78,6 +78,7 @@ export function PortfolioFormDialog({
     if (editingLot) {
       form.reset({
         ...editingLot,
+        agent: editingLot.agent || '__none__',
         maturityDate: editingLot.maturityDate || '',
         hasSemiannualCoupon: editingLot.hasSemiannualCoupon || false,
       })
@@ -85,7 +86,7 @@ export function PortfolioFormDialog({
       const existing = investments.find((i) => i.title === prefillTitle)
       form.reset({
         title: prefillTitle,
-        agent: existing?.agent || '',
+        agent: existing?.agent || '__none__',
         type: existing?.type || 'IPCA+',
         maturityDate: existing?.maturityDate || '',
         hasSemiannualCoupon: existing?.hasSemiannualCoupon || false,
@@ -97,7 +98,7 @@ export function PortfolioFormDialog({
     } else {
       form.reset({
         title: '',
-        agent: '',
+        agent: '__none__',
         type: 'IPCA+',
         purchaseDate: new Date().toISOString().split('T')[0],
         maturityDate: '',
@@ -108,6 +109,10 @@ export function PortfolioFormDialog({
       })
     }
   }, [open, editingLot, prefillTitle, investments, form])
+
+  const handleFormSubmit = (values: z.infer<typeof formSchema>) => {
+    onSubmit({ ...values, agent: values.agent === '__none__' ? '' : values.agent })
+  }
 
   const existingTitles = Array.from(new Set(investments.map((i) => i.title)))
   const selectedType = form.watch('type')
@@ -126,7 +131,7 @@ export function PortfolioFormDialog({
           </DialogTitle>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
+          <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4 pt-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
@@ -203,9 +208,26 @@ export function PortfolioFormDialog({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Corretora</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
+                    <Select onValueChange={field.onChange} value={field.value || '__none__'}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione a corretora" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="__none__">Sem Corretora</SelectItem>
+                        {userBrokers.map((b) => (
+                          <SelectItem key={b.id} value={b.name}>
+                            {b.name}
+                          </SelectItem>
+                        ))}
+                        {field.value &&
+                          field.value !== '__none__' &&
+                          !userBrokers.some((b) => b.name === field.value) && (
+                            <SelectItem value={field.value}>{field.value}</SelectItem>
+                          )}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}

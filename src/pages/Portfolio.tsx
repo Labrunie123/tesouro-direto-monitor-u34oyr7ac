@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Plus, Download } from 'lucide-react'
+import { Plus, Download, Building2, TrendingUp, Wallet, Percent } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -16,11 +16,14 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
+import { formatCurrency, formatPercent } from '@/lib/formatters'
+import { calculateMetrics } from '@/lib/investment-utils'
 import usePortfolioStore, { Investment, YieldPeriod } from '@/stores/usePortfolioStore'
 import { PortfolioTable } from '@/components/portfolio/PortfolioTable'
 import { PortfolioFormDialog } from '@/components/portfolio/PortfolioFormDialog'
 import { MtmAnalysisDialog } from '@/components/portfolio/MtmAnalysisDialog'
 import { NextCouponWidget } from '@/components/portfolio/NextCouponWidget'
+import { BrokerAddDialog } from '@/components/portfolio/BrokerAddDialog'
 
 export default function Portfolio() {
   const {
@@ -32,6 +35,9 @@ export default function Portfolio() {
     getYieldForPeriod,
     yieldPeriod,
     setYieldPeriod,
+    totalInvested,
+    currentValue,
+    portfolioYield,
   } = usePortfolioStore()
   const { toast } = useToast()
 
@@ -40,6 +46,7 @@ export default function Portfolio() {
   const [prefillTitle, setPrefillTitle] = useState<string | null>(null)
   const [analyzingId, setAnalyzingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [isBrokerDialogOpen, setIsBrokerDialogOpen] = useState(false)
 
   const handleOpenAddLot = (title: string) => {
     setEditingLot(null)
@@ -68,17 +75,8 @@ export default function Portfolio() {
       'Título,Corretora,Data Compra,Qtd,Preço Compra,Taxa(%),Valor Inicial,VNA Bruto,Alíquota IR(%),Valor Líquido,Yield(%)',
     ]
     const rows = investments.map((lot) => {
-      const vna = calculateCurrentValue(lot),
-        iv = lot.purchasePrice * lot.quantity,
-        gv = vna * lot.quantity
-      const days = Math.floor(
-        (new Date().getTime() - new Date(lot.purchaseDate).getTime()) / 86400000,
-      )
-      const tr = days <= 180 ? 0.225 : days <= 360 ? 0.2 : days <= 720 ? 0.175 : 0.15
-      const profit = gv - iv,
-        tax = profit > 0 ? profit * tr : 0,
-        nv = gv - tax
-      return `${lot.title},${lot.agent},${lot.purchaseDate},${lot.quantity},${lot.purchasePrice},${lot.rate},${iv.toFixed(2)},${gv.toFixed(2)},${(tr * 100).toFixed(2)},${nv.toFixed(2)},${getYieldForPeriod(lot, yieldPeriod).toFixed(2)}`
+      const m = calculateMetrics(lot, calculateCurrentValue)
+      return `${lot.title},${lot.agent || 'Sem Corretora'},${lot.purchaseDate},${lot.quantity},${lot.purchasePrice},${lot.rate},${m.iv.toFixed(2)},${m.gv.toFixed(2)},${(m.tr * 100).toFixed(2)},${m.nv.toFixed(2)},${getYieldForPeriod(lot, yieldPeriod).toFixed(2)}`
     })
     const link = document.createElement('a')
     link.href = encodeURI('data:text/csv;charset=utf-8,' + [headers, ...rows].join('\n'))
@@ -112,6 +110,11 @@ export default function Portfolio() {
           <Button variant="outline" onClick={exportCSV} className="hidden md:flex">
             <Download className="mr-2 h-4 w-4" /> CSV
           </Button>
+          <Button variant="outline" onClick={() => setIsBrokerDialogOpen(true)}>
+            <Building2 className="mr-2 h-4 w-4" />
+            <span className="hidden sm:inline">Incluir Corretora</span>
+            <span className="sm:hidden">Corretora</span>
+          </Button>
           <Button
             onClick={() => {
               setEditingLot(null)
@@ -123,6 +126,37 @@ export default function Portfolio() {
             <span className="hidden sm:inline">Adicionar Título</span>
             <span className="sm:hidden">Novo</span>
           </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="rounded-lg border bg-card p-4">
+          <div className="flex items-center gap-2 text-muted-foreground mb-1">
+            <Wallet className="h-4 w-4" />
+            <span className="text-sm">Total Investido</span>
+          </div>
+          <span className="text-xl font-bold">{formatCurrency(totalInvested)}</span>
+        </div>
+        <div className="rounded-lg border bg-card p-4">
+          <div className="flex items-center gap-2 text-muted-foreground mb-1">
+            <TrendingUp className="h-4 w-4" />
+            <span className="text-sm">Valor Atual</span>
+          </div>
+          <span className="text-xl font-bold text-primary">{formatCurrency(currentValue)}</span>
+        </div>
+        <div className="rounded-lg border bg-card p-4">
+          <div className="flex items-center gap-2 text-muted-foreground mb-1">
+            <Percent className="h-4 w-4" />
+            <span className="text-sm">
+              Rendimento ({yieldPeriod === 'all' ? 'Total' : yieldPeriod})
+            </span>
+          </div>
+          <span
+            className={`text-xl font-bold ${portfolioYield >= 0 ? 'text-emerald-600' : 'text-destructive'}`}
+          >
+            {portfolioYield > 0 ? '+' : ''}
+            {formatPercent(portfolioYield)}
+          </span>
         </div>
       </div>
 
@@ -143,6 +177,7 @@ export default function Portfolio() {
         onSubmit={onSubmitForm}
       />
       <MtmAnalysisDialog analyzingId={analyzingId} onClose={() => setAnalyzingId(null)} />
+      <BrokerAddDialog open={isBrokerDialogOpen} onOpenChange={setIsBrokerDialogOpen} />
 
       <Dialog open={!!deletingId} onOpenChange={(v) => !v && setDeletingId(null)}>
         <DialogContent className="sm:max-w-[425px]">
