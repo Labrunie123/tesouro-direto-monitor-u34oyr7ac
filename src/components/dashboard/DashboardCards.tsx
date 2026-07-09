@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/select'
 import usePortfolioStore, { YieldPeriod } from '@/stores/usePortfolioStore'
 import { formatCurrency, formatPercent, formatDate } from '@/lib/formatters'
+import { VnaCard } from '@/components/dashboard/VnaCard'
 
 export function DashboardCards() {
   const {
@@ -43,7 +44,7 @@ export function DashboardCards() {
   }, [investments, projectionPeriod, calculateCurrentValue])
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
       <Card
         className="hover:shadow-md transition-shadow animate-fade-in-up"
         style={{ animationDelay: '0ms' }}
@@ -153,6 +154,8 @@ export function DashboardCards() {
           )}
         </CardContent>
       </Card>
+
+      <VnaCard />
     </div>
   )
 }

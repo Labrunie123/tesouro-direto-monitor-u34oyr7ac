@@ -248,7 +248,14 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     }
   })
 
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
+    try {
+      const saved = localStorage.getItem('@tesouro-vision:current-user')
+      return saved || '2'
+    } catch {
+      return '2'
+    }
+  })
 
   const [allUserBrokers, setAllUserBrokers] = useState<UserBroker[]>(() => {
     try {
@@ -352,6 +359,16 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
       /* intentionally ignored */
     }
   }, [allUserBrokers])
+
+  useEffect(() => {
+    try {
+      if (currentUserId) {
+        localStorage.setItem('@tesouro-vision:current-user', currentUserId)
+      }
+    } catch {
+      /* intentionally ignored */
+    }
+  }, [currentUserId])
 
   const dividends = useMemo(() => {
     const data: Dividend[] = []

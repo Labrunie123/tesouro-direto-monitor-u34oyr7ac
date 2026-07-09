@@ -111,9 +111,9 @@ export function DashboardCharts() {
             <CardTitle>Alocação por Tipo de Título</CardTitle>
             <CardDescription>Distribuição do patrimônio por categoria</CardDescription>
           </CardHeader>
-          <CardContent className="flex-1 flex flex-col items-center justify-center min-h-[300px]">
+          <CardContent className="flex-1 flex flex-col min-h-[300px]">
             {allocationByTypeData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={280}>
                 <PieChart>
                   <Pie
                     data={allocationByTypeData}
@@ -154,9 +154,9 @@ export function DashboardCharts() {
             <CardTitle>Alocação por Custódia</CardTitle>
             <CardDescription>Distribuição do patrimônio por corretora</CardDescription>
           </CardHeader>
-          <CardContent className="flex-1 flex flex-col items-center justify-center min-h-[300px]">
+          <CardContent className="flex-1 flex flex-col min-h-[300px]">
             {allocationData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={280}>
                 <PieChart>
                   <Pie
                     data={allocationData}
@@ -201,6 +201,7 @@ export function DashboardCharts() {
           </CardHeader>
           <CardContent className="flex-1 min-h-[300px]">
             <ChartContainer
+              className="h-[280px] w-full"
               config={{
                 Carteira: { label: 'Minha Carteira', color: 'hsl(var(--primary))' },
                 CDI: { label: 'CDI 100%', color: 'hsl(var(--muted-foreground))' },

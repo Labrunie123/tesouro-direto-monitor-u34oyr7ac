@@ -1,251 +1,120 @@
-import React, { useEffect } from 'react'
-import { Outlet, Link, useLocation, Navigate, useNavigate } from 'react-router-dom'
-import {
-  LayoutDashboard,
-  Wallet,
-  TrendingUp,
-  BarChart3,
-  Download,
-  Plus,
-  Settings,
-  Calculator,
-  Bell,
-  HandCoins,
-  Users,
-  LogOut,
-  UserCircle2,
-} from 'lucide-react'
+import { Link, Outlet, useLocation } from 'react-router-dom'
 import {
   Sidebar,
   SidebarContent,
+  SidebarGroup,
+  SidebarGroupLabel,
   SidebarHeader,
+  SidebarInset,
   SidebarMenu,
-  SidebarMenuItem,
   SidebarMenuButton,
+  SidebarMenuItem,
   SidebarProvider,
   SidebarTrigger,
-  SidebarInset,
-  SidebarFooter,
 } from '@/components/ui/sidebar'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import usePortfolioStore from '@/stores/usePortfolioStore'
-import useUserStore from '@/stores/useUserStore'
-import { formatDate } from '@/lib/formatters'
-import { cn } from '@/lib/utils'
+import {
+  LayoutDashboard,
+  Wallet,
+  Coins,
+  TrendingUp,
+  BarChart3,
+  Calculator,
+  Users,
+  Upload,
+  GitCompare,
+  Settings,
+} from 'lucide-react'
+
+const navItems = [
+  { title: 'Painel Geral', href: '/', icon: LayoutDashboard },
+  { title: 'Carteira', href: '/portfolio', icon: Wallet },
+  { title: 'Rendimentos', href: '/dividends', icon: Coins },
+  { title: 'Projeções', href: '/projections', icon: TrendingUp },
+  { title: 'Benchmarks', href: '/benchmarks', icon: BarChart3 },
+  { title: 'Simulador', href: '/simulator', icon: Calculator },
+  { title: 'Usuários', href: '/users', icon: Users },
+  { title: 'Importar', href: '/import', icon: Upload },
+]
+
+const adminItems = [
+  { title: 'Comparação', href: '/admin/comparison', icon: GitCompare },
+  { title: 'Configurações', href: '/admin/settings', icon: Settings },
+]
+
+const pageTitles: Record<string, string> = {
+  '/': 'Painel Geral',
+  '/portfolio': 'Carteira',
+  '/dividends': 'Rendimentos',
+  '/projections': 'Projeções',
+  '/benchmarks': 'Benchmarks',
+  '/simulator': 'Simulador',
+  '/users': 'Usuários',
+  '/import': 'Importar',
+  '/admin/comparison': 'Comparação',
+  '/admin/settings': 'Configurações',
+}
 
 export default function Layout() {
   const location = useLocation()
-  const navigate = useNavigate()
-  const { settings, notifications, setCurrentUserId } = usePortfolioStore()
-  const { activeUser, activeRole, impersonatedUser, setImpersonatedUserId, logout } = useUserStore()
-
-  useEffect(() => {
-    if (activeUser) {
-      if (activeRole === 'Admin' && impersonatedUser) {
-        setCurrentUserId(impersonatedUser.id)
-      } else if (!location.pathname.includes('/admin/users/')) {
-        setCurrentUserId(activeUser.id)
-      }
-    }
-  }, [activeUser, activeRole, impersonatedUser, setCurrentUserId, location.pathname])
-
-  if (!activeUser) {
-    return <Navigate to="/login" replace />
-  }
-
-  if (
-    activeRole === 'User' &&
-    (location.pathname.startsWith('/admin') || location.pathname === '/users')
-  ) {
-    return <Navigate to="/" replace />
-  }
-
-  const userNav = [
-    { title: 'Dashboard', icon: LayoutDashboard, path: '/' },
-    { title: 'Minha Carteira', icon: Wallet, path: '/portfolio' },
-    { title: 'Dividendos', icon: HandCoins, path: '/dividends' },
-    { title: 'Projeções', icon: TrendingUp, path: '/projections' },
-    { title: 'Benchmarks', icon: BarChart3, path: '/benchmarks' },
-    { title: 'Simulador', icon: Calculator, path: '/simulator' },
-    { title: 'Importar Dados', icon: Download, path: '/import' },
-  ]
-
-  const adminNav = [
-    ...userNav,
-    { title: 'Gestão de Usuários', icon: Users, path: '/users' },
-    { title: 'Comparativo Admin', icon: BarChart3, path: '/admin/comparison' },
-    { title: 'Configurações', icon: Settings, path: '/admin/settings' },
-  ]
-
-  const navItems = activeRole === 'Admin' ? adminNav : userNav
+  const currentTitle = pageTitles[location.pathname] || 'Painel Geral'
 
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen w-full bg-background text-foreground font-sans">
-        <Sidebar variant="inset" className="border-r border-border/50">
-          <SidebarHeader className="flex flex-row items-center gap-2 p-4 pt-6">
+      <Sidebar>
+        <SidebarHeader>
+          <div className="flex items-center gap-2 px-4 py-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <TrendingUp className="h-5 w-5" />
             </div>
-            <span className="text-xl font-bold tracking-tight text-primary">TesouroVision</span>
-          </SidebarHeader>
-          <SidebarContent className="px-2 mt-4">
+            <span className="text-base font-bold">Tesouro Monitor</span>
+          </div>
+        </SidebarHeader>
+        <SidebarContent>
+          <SidebarGroup>
+            <SidebarGroupLabel>Menu Principal</SidebarGroupLabel>
             <SidebarMenu>
               {navItems.map((item) => (
-                <SidebarMenuItem key={item.path}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={
-                      location.pathname === item.path ||
-                      location.pathname.startsWith(item.path + '/')
-                    }
-                    className="h-11 rounded-lg px-4"
-                  >
-                    <Link to={item.path} className="flex items-center gap-3">
-                      <item.icon className="h-5 w-5" />
-                      <span className="font-medium">{item.title}</span>
+                <SidebarMenuItem key={item.href}>
+                  <SidebarMenuButton asChild isActive={location.pathname === item.href}>
+                    <Link to={item.href}>
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.title}</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>
-          </SidebarContent>
-          <SidebarFooter className="p-4 border-t border-border/50">
-            <div className="flex items-center justify-between px-2">
-              <div className="flex items-center gap-3">
-                <Avatar className="h-9 w-9 border border-border">
-                  <AvatarFallback>{activeUser.name.slice(0, 2).toUpperCase()}</AvatarFallback>
-                </Avatar>
-                <div className="flex flex-col">
-                  <span className="text-sm font-semibold truncate max-w-[100px]">
-                    {activeUser.name}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {activeRole === 'Admin' ? 'Administrador' : 'Investidor'}
-                  </span>
-                </div>
-              </div>
-              <Button variant="ghost" size="icon" onClick={() => logout()}>
-                <LogOut className="h-4 w-4" />
-              </Button>
-            </div>
-          </SidebarFooter>
-        </Sidebar>
-
-        <SidebarInset className="flex w-full flex-1 flex-col overflow-hidden bg-muted/20">
-          {impersonatedUser && (
-            <div className="bg-primary text-primary-foreground px-4 py-2.5 flex items-center justify-between shadow-md z-20">
-              <div className="flex items-center gap-2">
-                <UserCircle2 className="h-5 w-5" />
-                <span className="text-sm font-medium">
-                  Visualizando sistema como:{' '}
-                  <strong className="ml-1">{impersonatedUser.name}</strong>
-                </span>
-              </div>
-              <Button
-                size="sm"
-                variant="secondary"
-                className="h-8 text-xs font-semibold hover:bg-secondary/90"
-                onClick={() => {
-                  setImpersonatedUserId(null)
-                  navigate('/')
-                }}
-              >
-                Sair da visualização
-              </Button>
-            </div>
-          )}
-          <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm md:px-8">
-            <SidebarTrigger className="-ml-1" />
-            <div className="flex flex-1 items-center justify-between">
-              <div className="flex items-center gap-4 ml-2">
-                <h1 className="text-lg font-semibold hidden sm:block">
-                  {navItems.find((i) => i.path === location.pathname)?.title ||
-                    (activeRole === 'Admin' ? 'Administração' : 'Visão Geral')}
-                </h1>
-                <div className="hidden items-center gap-1.5 rounded-full bg-secondary/50 px-3 py-1 text-xs font-medium text-muted-foreground md:flex">
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                  </span>
-                  VNA Atualizado: {formatDate(settings.lastSync)}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="ghost" size="icon" className="relative mr-2">
-                        <Bell className="h-5 w-5" />
-                        {notifications.length > 0 && (
-                          <Badge
-                            variant="destructive"
-                            className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-[10px] rounded-full"
-                          >
-                            {notifications.length}
-                          </Badge>
-                        )}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent align="end" className="w-80">
-                      <div className="space-y-2">
-                        <h4 className="font-medium text-sm">Notificações Inteligentes</h4>
-                        {notifications.length === 0 ? (
-                          <p className="text-sm text-muted-foreground mt-2">
-                            Nenhuma notificação pendente.
-                          </p>
-                        ) : (
-                          <div className="space-y-3 mt-4">
-                            {notifications.map((n) => (
-                              <div
-                                key={n.id}
-                                className="flex flex-col gap-1 border-b border-border/50 pb-3 last:border-0 last:pb-0"
-                              >
-                                <span className="text-sm font-medium flex items-center gap-2">
-                                  <span
-                                    className={cn(
-                                      'h-2 w-2 rounded-full shrink-0',
-                                      n.type === 'maturity' ? 'bg-destructive' : 'bg-primary',
-                                    )}
-                                  />
-                                  {n.title}
-                                </span>
-                                <span className="text-xs text-muted-foreground ml-4">
-                                  {n.message}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-
-                  <Button size="sm" variant="outline" className="hidden md:flex gap-2" asChild>
-                    <Link to="/import">
-                      <Settings className="h-4 w-4" />
-                      Ajustes
+          </SidebarGroup>
+          <SidebarGroup>
+            <SidebarGroupLabel>Administração</SidebarGroupLabel>
+            <SidebarMenu>
+              {adminItems.map((item) => (
+                <SidebarMenuItem key={item.href}>
+                  <SidebarMenuButton asChild isActive={location.pathname === item.href}>
+                    <Link to={item.href}>
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.title}</span>
                     </Link>
-                  </Button>
-                  <Button size="sm" className="gap-2 shadow-sm" asChild>
-                    <Link to="/portfolio">
-                      <Plus className="h-4 w-4" />
-                      <span className="hidden sm:inline">Adicionar Título</span>
-                      <span className="sm:hidden">Novo</span>
-                    </Link>
-                  </Button>
-                </>
-              </div>
-            </div>
-          </header>
-          <main className="flex-1 overflow-y-auto p-4 md:p-8 animate-fade-in">
-            <Outlet />
-          </main>
-        </SidebarInset>
-      </div>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroup>
+        </SidebarContent>
+      </Sidebar>
+      <SidebarInset>
+        <header className="flex h-16 shrink-0 items-center gap-3 border-b px-6">
+          <SidebarTrigger />
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-muted-foreground">Tesouro Monitor</span>
+            <span className="text-muted-foreground">/</span>
+            <span className="font-medium">{currentTitle}</span>
+          </div>
+        </header>
+        <main className="flex-1 overflow-auto p-6">
+          <Outlet />
+        </main>
+      </SidebarInset>
     </SidebarProvider>
   )
 }
