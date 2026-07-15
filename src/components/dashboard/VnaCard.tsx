@@ -25,7 +25,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from '@/hooks/use-toast'
 import usePortfolioStore from '@/stores/usePortfolioStore'
-import { formatCurrency, formatDate, formatDateTime } from '@/lib/formatters'
+import { formatVnaCurrency, formatDate, formatDateTime, formatCurrency } from '@/lib/formatters'
 import { findVnaForTitle, getManualVna, saveManualVna, clearManualVna } from '@/lib/vna-service'
 import { cn } from '@/lib/utils'
 
@@ -50,10 +50,13 @@ export function VnaCard() {
 
   useEffect(() => {
     if (vnaError && vnaError !== prevErrorRef.current && !vnaLoading) {
+      const hasManual = getManualVna() !== null
       toast({
         title: 'Erro ao buscar VNA',
-        description: 'Não foi possível obter o VNA automaticamente. Use a entrada manual.',
-        variant: 'destructive',
+        description: hasManual
+          ? 'Não foi possível obter o VNA automaticamente. Usando valor manual salvo.'
+          : 'Não foi possível obter o VNA automaticamente. Use a entrada manual para manter seus cálculos.',
+        variant: hasManual ? 'default' : 'destructive',
       })
       prevErrorRef.current = vnaError
     } else if (!vnaError) {
@@ -117,7 +120,7 @@ export function VnaCard() {
     setInputValue('')
     toast({
       title: 'VNA manual salvo',
-      description: `Valor ${formatCurrency(parsed)} definido manualmente.`,
+      description: `Valor ${formatVnaCurrency(parsed)} definido manualmente.`,
     })
   }
 
@@ -276,7 +279,7 @@ export function VnaCard() {
           </div>
         ) : hasData ? (
           <>
-            <div className="text-2xl font-bold tabular-nums">{formatCurrency(vnaValue)}</div>
+            <div className="text-2xl font-bold tabular-nums">{formatVnaCurrency(vnaValue)}</div>
             {isManual ? (
               <p className="text-xs mt-1 flex items-center gap-1 text-purple-600 dark:text-purple-400">
                 <Pencil className="h-3 w-3 shrink-0" />

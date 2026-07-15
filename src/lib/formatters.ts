@@ -23,9 +23,13 @@ export function formatPercent(value: number): string {
 
 export function formatVna(value: number): string {
   return new Intl.NumberFormat('pt-BR', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    minimumFractionDigits: 6,
+    maximumFractionDigits: 6,
   }).format(value)
+}
+
+export function formatVnaCurrency(value: number): string {
+  return `R$ ${formatVna(value)}`
 }
 
 export function formatDateTime(dateString: string | Date): string {

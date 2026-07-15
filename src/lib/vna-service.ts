@@ -112,6 +112,17 @@ async function fetchFromHook(): Promise<HookResponse> {
     })
     clearTimeout(timeout)
 
+    const contentType = response.headers.get('content-type') || ''
+    if (!contentType.includes('application/json')) {
+      const text = await response.text()
+      if (text.trim().startsWith('<') || text.includes('<!DOCTYPE') || text.includes('<!--')) {
+        throw new Error(
+          'API retornou HTML em vez de JSON (possível erro de CORS ou servidor offline)',
+        )
+      }
+      throw new Error(`API retornou formato inesperado: ${contentType}`)
+    }
+
     const data: HookResponse = await response.json()
 
     if (!response.ok || !data.success) {
@@ -126,6 +137,9 @@ async function fetchFromHook(): Promise<HookResponse> {
       (error.name === 'AbortError' || error.name === 'TimeoutError')
     ) {
       throw new Error('Tempo limite excedido ao conectar com a API da B3')
+    }
+    if (error instanceof SyntaxError && error.message.includes('JSON')) {
+      throw new Error('Resposta inválida da API (HTML recebido em vez de JSON - possível CORS)')
     }
     throw error
   }
@@ -142,6 +156,15 @@ async function fetchFromAlternativeHook(): Promise<HookResponse> {
     })
     clearTimeout(timeout)
 
+    const contentType = response.headers.get('content-type') || ''
+    if (!contentType.includes('application/json')) {
+      const text = await response.text()
+      if (text.trim().startsWith('<') || text.includes('<!DOCTYPE') || text.includes('<!--')) {
+        throw new Error('Fonte alternativa retornou HTML em vez de JSON (possível erro de CORS)')
+      }
+      throw new Error(`Fonte alternativa retornou formato inesperado: ${contentType}`)
+    }
+
     const data: HookResponse = await response.json()
 
     if (!response.ok || !data.success) {
@@ -156,6 +179,9 @@ async function fetchFromAlternativeHook(): Promise<HookResponse> {
       (error.name === 'AbortError' || error.name === 'TimeoutError')
     ) {
       throw new Error('Tempo limite excedido ao conectar com fonte alternativa')
+    }
+    if (error instanceof SyntaxError && error.message.includes('JSON')) {
+      throw new Error('Resposta inválida da fonte alternativa (HTML recebido em vez de JSON)')
     }
     throw error
   }
@@ -229,8 +255,16 @@ function classifyError(error: unknown): VnaErrorType {
   if (error instanceof DOMException) {
     if (error.name === 'TimeoutError' || error.name === 'AbortError') return 'TIMEOUT_ERROR'
   }
+  if (error instanceof SyntaxError) return 'PARSE_ERROR'
   if (error instanceof Error) {
-    if (error.message.includes('parse') || error.message.includes('JSON')) return 'PARSE_ERROR'
+    if (
+      error.message.includes('parse') ||
+      error.message.includes('JSON') ||
+      error.message.includes('HTML') ||
+      error.message.includes('CORS')
+    ) {
+      return 'PARSE_ERROR'
+    }
     if (error.message.includes('status') || error.message.includes('format')) return 'API_ERROR'
   }
   return 'UNKNOWN_ERROR'

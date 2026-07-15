@@ -67,6 +67,15 @@ async function fetchFromB3(): Promise<VnaEntry[]> {
     throw new Error(`B3 API returned status ${response.status}`)
   }
 
+  const contentType = response.headers.get('content-type') || ''
+  if (!contentType.includes('application/json')) {
+    const text = await response.text()
+    if (text.trim().startsWith('<') || text.includes('<!DOCTYPE') || text.includes('<!--')) {
+      throw new Error('B3 API returned HTML instead of JSON (possible CORS or server error)')
+    }
+    throw new Error(`B3 API returned unexpected content type: ${contentType}`)
+  }
+
   const data: unknown = await response.json()
 
   if (!data || typeof data !== 'object') {
