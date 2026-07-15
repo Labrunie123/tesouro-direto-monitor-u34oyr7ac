@@ -243,6 +243,39 @@ Deno.serve(async (req: Request) => {
       )
     }
 
+    if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+      console.error('[fetch-vna-anbima] Timeout:', error.message)
+      return jsonResponse(
+        {
+          success: false,
+          error:
+            'Tempo limite excedido ao conectar com a API da ANBIMA. Tente novamente em alguns instantes.',
+          errorType: 'TIMEOUT_ERROR',
+          entries: [],
+          date: null,
+          fetchedAt: new Date().toISOString(),
+          source: 'ANBIMA',
+        },
+        504,
+      )
+    }
+
+    if (error instanceof TypeError) {
+      console.error('[fetch-vna-anbima] Network error:', error.message)
+      return jsonResponse(
+        {
+          success: false,
+          error: 'Erro de rede ao conectar com a API da ANBIMA. Verifique a conectividade.',
+          errorType: 'NETWORK_ERROR',
+          entries: [],
+          date: null,
+          fetchedAt: new Date().toISOString(),
+          source: 'ANBIMA',
+        },
+        503,
+      )
+    }
+
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     return jsonResponse(
       {

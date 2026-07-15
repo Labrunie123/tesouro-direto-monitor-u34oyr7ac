@@ -65,14 +65,14 @@ async function readErrorBody(
   context: Response,
 ): Promise<{ error?: string; errorType?: string; anbimaStatus?: number } | null> {
   try {
-    return await context.json()
-  } catch {
+    const text = await context.text()
     try {
-      const text = await context.text()
-      return { error: text }
+      return JSON.parse(text)
     } catch {
-      return null
+      return { error: text || `HTTP ${context.status} error` }
     }
+  } catch {
+    return null
   }
 }
 

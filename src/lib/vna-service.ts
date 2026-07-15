@@ -164,6 +164,12 @@ export async function fetchVnaData(onFallback?: () => void): Promise<VnaFetchRes
     'Não foi possível obter dados do VNA da ANBIMA. Exibindo último valor conhecido.'
   const errorType: VnaErrorType = backendErrorType || 'API_ERROR'
 
+  console.warn('[vna-service] VNA fetch fallback:', {
+    errorMessage,
+    errorType,
+    hasCached: !!getCachedEntries(),
+  })
+
   try {
     localStorage.setItem(
       FETCH_ERROR_KEY,
