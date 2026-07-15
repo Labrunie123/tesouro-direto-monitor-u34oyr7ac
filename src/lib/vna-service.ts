@@ -5,6 +5,14 @@ export interface VnaEntry {
   date: string
 }
 
+export type VnaFetchStatus = 'fresh' | 'cached' | 'default'
+
+export interface VnaFetchResult {
+  entries: VnaEntry[]
+  date: string
+  status: VnaFetchStatus
+}
+
 const TARGET_SELIC_CODE = '760199'
 const FETCH_CACHE_KEY = '@tesouro-vision:vna-fetch-cache'
 const FETCH_DATE_KEY = '@tesouro-vision:vna-fetch-date'
@@ -13,6 +21,7 @@ const ANBIMA_URL = 'https://data.anbima.com.br/titulos-publicos/valor-nominal-at
 const CORS_PROXIES: ((url: string) => string)[] = [
   (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
   (url) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+  (url) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url)}`,
 ]
 
 async function fetchWithFallback(url: string): Promise<Response> {
@@ -157,6 +166,20 @@ function parseAnbimaHtml(html: string): VnaEntry[] {
     }
   }
 
+  const nextDataMatch = html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i)
+  if (nextDataMatch) {
+    try {
+      const parsed = JSON.parse(nextDataMatch[1])
+      const pageProps = (parsed as any)?.props?.pageProps
+      if (pageProps) {
+        const extracted = parseAnbimaJson(pageProps)
+        if (extracted.length > 0) return extracted
+      }
+    } catch {
+      // continue
+    }
+  }
+
   const dateMatch = html.match(
     /data[_-]?(?:referencia|atualizacao|base)["\s:>]+(\d{4}-\d{2}-\d{2})/i,
   )
@@ -173,6 +196,22 @@ function parseAnbimaHtml(html: string): VnaEntry[] {
         title: 'Tesouro IPCA+ com Juros Semestrais 2045',
         vna,
         date: refDate,
+      })
+    }
+  }
+
+  const tableRowRegex =
+    /760199[\s\S]{0,300}?(\d{2}\/\d{2}\/\d{4})[\s\S]{0,300}?(\d{1,3}(?:\.\d{3})*(?:,\d{2,}))/gi
+  while ((match = tableRowRegex.exec(html)) !== null) {
+    const [d, m, y] = match[1].split('/')
+    const isoDate = `${y}-${m}-${d}`
+    const vna = parseFloat(match[2].replace(/\./g, '').replace(',', '.'))
+    if (vna > 0) {
+      entries.push({
+        code: TARGET_SELIC_CODE,
+        title: 'Tesouro IPCA+ com Juros Semestrais 2045',
+        vna,
+        date: isoDate,
       })
     }
   }
@@ -208,10 +247,7 @@ function getCachedEntries(): VnaEntry[] | null {
   return null
 }
 
-export async function fetchVnaData(): Promise<{
-  entries: VnaEntry[]
-  date: string
-}> {
+export async function fetchVnaData(): Promise<VnaFetchResult> {
   const today = todayStr()
   const lastFetchDate = localStorage.getItem(FETCH_DATE_KEY)
 
@@ -221,15 +257,15 @@ export async function fetchVnaData(): Promise<{
     const referenceDate = targetEntry?.date || today
     localStorage.setItem(FETCH_CACHE_KEY, JSON.stringify(entries))
     localStorage.setItem(FETCH_DATE_KEY, referenceDate)
-    return { entries, date: referenceDate }
+    return { entries, date: referenceDate, status: 'fresh' }
   } catch (e) {
     console.warn('ANBIMA VNA fetch failed, using cached/default data', e)
 
     const cached = getCachedEntries()
     if (cached && cached.length > 0) {
-      return { entries: cached, date: lastFetchDate || today }
+      return { entries: cached, date: lastFetchDate || today, status: 'cached' }
     }
 
-    return { entries: DEFAULT_VNA_DATA, date: lastFetchDate || today }
+    return { entries: DEFAULT_VNA_DATA, date: lastFetchDate || today, status: 'default' }
   }
 }

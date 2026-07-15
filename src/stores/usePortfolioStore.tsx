@@ -95,6 +95,7 @@ interface PortfolioState {
   vnaData: VnaEntry[]
   vnaDate: string
   vnaLoading: boolean
+  vnaError: boolean
   fetchVna: () => Promise<void>
 }
 
@@ -337,6 +338,13 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
   })
 
   const [vnaLoading, setVnaLoading] = useState(false)
+  const [vnaError, setVnaError] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('@tesouro-vision:vna-error') === 'true'
+    } catch {
+      return false
+    }
+  })
 
   useEffect(() => {
     try {
@@ -393,6 +401,14 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
       /* intentionally ignored */
     }
   }, [vnaDate])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('@tesouro-vision:vna-error', String(vnaError))
+    } catch {
+      /* intentionally ignored */
+    }
+  }, [vnaError])
 
   useEffect(() => {
     try {
@@ -503,13 +519,10 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
       const result = await fetchVnaData()
       setVnaData(result.entries)
       setVnaDate(result.date)
-      try {
-        localStorage.setItem('@tesouro-vision:vna-date', result.date)
-      } catch {
-        /* intentionally ignored */
-      }
+      setVnaError(result.status !== 'fresh')
     } catch (e) {
       console.warn('Failed to fetch VNA data', e)
+      setVnaError(true)
     } finally {
       setVnaLoading(false)
     }
@@ -710,6 +723,7 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
         vnaData,
         vnaDate,
         vnaLoading,
+        vnaError,
         fetchVna,
       },
     },
