@@ -94,6 +94,9 @@ export function VnaCard() {
   const showSkeleton = vnaLoading && !hasData
   const isTimeout = vnaErrorType === 'TIMEOUT_ERROR'
   const isAuthError = vnaErrorType === 'AUTH_ERROR'
+  const isEmptyResponse = vnaErrorType === 'EMPTY_RESPONSE_ERROR'
+  const isDatabaseError = vnaErrorType === 'DATABASE_ERROR'
+  const isParseError = vnaErrorType === 'PARSE_ERROR'
 
   const formattedSyncTime = useMemo(() => {
     if (isManual && manualVna) return formatDateTime(manualVna.date)
@@ -198,6 +201,36 @@ export function VnaCard() {
             className="text-[10px] py-0 px-1.5 text-orange-600 border-orange-500/50 bg-orange-500/10"
           >
             Tempo Esgotado
+          </Badge>
+        )
+      }
+      if (isEmptyResponse) {
+        return (
+          <Badge
+            variant="outline"
+            className="text-[10px] py-0 px-1.5 text-amber-600 border-amber-500/50 bg-amber-500/10"
+          >
+            Sem Títulos
+          </Badge>
+        )
+      }
+      if (isDatabaseError) {
+        return (
+          <Badge
+            variant="outline"
+            className="text-[10px] py-0 px-1.5 text-red-600 border-red-500/50 bg-red-500/10"
+          >
+            Erro de Banco
+          </Badge>
+        )
+      }
+      if (isParseError) {
+        return (
+          <Badge
+            variant="outline"
+            className="text-[10px] py-0 px-1.5 text-orange-600 border-orange-500/50 bg-orange-500/10"
+          >
+            Erro de Parse
           </Badge>
         )
       }
@@ -323,9 +356,15 @@ export function VnaCard() {
                     ? 'Tempo limite excedido ao conectar com a ANBIMA. O servidor pode estar indisponível.'
                     : isAuthError
                       ? 'Credenciais da ANBIMA inválidas ou não autorizadas. Verifique a configuração dos secrets.'
-                      : vnaError
-                        ? vnaError
-                        : 'API da ANBIMA indisponível. Exibindo último valor conhecido.'}
+                      : isEmptyResponse
+                        ? 'A API da ANBIMA respondeu com sucesso, mas nenhum título foi encontrado na resposta. O array "titulos" pode estar vazio ou ausente.'
+                        : isDatabaseError
+                          ? 'Erro ao salvar dados no banco de dados. Tente novamente em instantes.'
+                          : isParseError
+                            ? 'Erro ao processar a resposta da API ANBIMA. O formato dos dados pode ter mudado.'
+                            : vnaError
+                              ? vnaError
+                              : 'API da ANBIMA indisponível. Exibindo último valor conhecido.'}
                 </p>
                 {vnaErrorType && (
                   <p className="text-[10px] text-muted-foreground/70 font-mono">
@@ -357,6 +396,23 @@ export function VnaCard() {
                       <span className="line-clamp-2">
                         Tempo limite excedido ao conectar com a ANBIMA.
                       </span>
+                    </>
+                  ) : isEmptyResponse ? (
+                    <>
+                      <AlertCircle className="h-3 w-3 shrink-0" />
+                      <span className="line-clamp-2">
+                        A API respondeu mas nenhum título foi encontrado.
+                      </span>
+                    </>
+                  ) : isDatabaseError ? (
+                    <>
+                      <AlertCircle className="h-3 w-3 shrink-0" />
+                      <span className="line-clamp-2">Erro ao salvar no banco de dados.</span>
+                    </>
+                  ) : isParseError ? (
+                    <>
+                      <AlertCircle className="h-3 w-3 shrink-0" />
+                      <span className="line-clamp-2">Erro ao processar resposta da API.</span>
                     </>
                   ) : (
                     <>
@@ -408,9 +464,15 @@ export function VnaCard() {
                     ? 'Credenciais inválidas'
                     : isTimeout
                       ? 'Tempo limite excedido'
-                      : vnaError
-                        ? vnaError
-                        : 'API indisponível no momento'}
+                      : isEmptyResponse
+                        ? 'Nenhum título encontrado'
+                        : isDatabaseError
+                          ? 'Erro de banco de dados'
+                          : isParseError
+                            ? 'Erro de processamento'
+                            : vnaError
+                              ? vnaError
+                              : 'API indisponível no momento'}
               </p>
               {vnaErrorType && !vnaLoading && (
                 <p className="text-[10px] text-muted-foreground/70 font-mono mt-1">

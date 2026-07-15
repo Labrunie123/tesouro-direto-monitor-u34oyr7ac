@@ -74,6 +74,50 @@ async function getAnbimaToken(clientId: string, clientSecret: string): Promise<s
   return data.access_token as string
 }
 
+function extractTitulosFromItem(item: Record<string, unknown>): VnaEntry[] {
+  const entries: VnaEntry[] = []
+  const parentRefDate = String(item.data_referencia || item.data || item.reference_date || '')
+
+  const titulos = item.titulos
+  if (Array.isArray(titulos)) {
+    for (const titulo of titulos) {
+      const t = titulo as Record<string, unknown>
+      const bondType = String(t.tipo_titulo || t.tipo || t.bond_type || 'NTN-B')
+      const vna = Number(t.vna || t.valor || 0)
+      const code = String(t.codigo_selic || t.code || t.codigo || '760199')
+      const title = String(t.titulo || t.title || t.nome_titulo || bondType)
+      const entryDate = String(t.data_referencia || t.data || parentRefDate || '')
+
+      if (vna > 0 && entryDate) {
+        entries.push({
+          code,
+          title,
+          vna,
+          date: entryDate.split('T')[0],
+          bondType,
+        })
+      }
+    }
+  } else {
+    const bondType = String(item.tipo_titulo || item.tipo || item.bond_type || 'NTN-B')
+    const vna = Number(item.vna || item.valor || 0)
+    const code = String(item.codigo_selic || item.code || item.codigo || '760199')
+    const title = String(item.titulo || item.title || item.nome_titulo || bondType)
+
+    if (vna > 0 && parentRefDate) {
+      entries.push({
+        code,
+        title,
+        vna,
+        date: parentRefDate.split('T')[0],
+        bondType,
+      })
+    }
+  }
+
+  return entries
+}
+
 function parseAnbimaVna(data: unknown): VnaEntry[] {
   const items: unknown[] = Array.isArray(data)
     ? data
@@ -83,15 +127,8 @@ function parseAnbimaVna(data: unknown): VnaEntry[] {
 
   const entries: VnaEntry[] = []
   for (const item of items) {
-    const obj = item as Record<string, unknown>
-    const bondType = String(obj.tipo_titulo || obj.tipo || obj.bond_type || 'NTN-B')
-    const vna = Number(obj.vna || obj.valor || 0)
-    const refDate = String(obj.data_referencia || obj.data || obj.reference_date || '')
-    const code = String(obj.codigo_selic || obj.code || obj.codigo || '760199')
-    const title = String(obj.titulo || obj.title || obj.nome_titulo || bondType)
-
-    if (vna > 0 && refDate) {
-      entries.push({ code, title, vna, date: refDate.split('T')[0], bondType })
+    if (item && typeof item === 'object') {
+      entries.push(...extractTitulosFromItem(item as Record<string, unknown>))
     }
   }
   return entries
@@ -152,17 +189,29 @@ async function fetchVnaForDate(
   return { entries: parseAnbimaVna(data), status: response.status, rawBody }
 }
 
-async function fetchVnaWithFallback(token: string, clientId: string): Promise<VnaEntry[]> {
+async function fetchVnaWithFallback(
+  token: string,
+  clientId: string,
+): Promise<{ entries: VnaEntry[]; triedDates: string[]; lastStatus: number; lastRawBody: string }> {
+  const triedDates: string[] = ['latest']
   const latestResult = await fetchVnaForDate(token, clientId)
 
   if (latestResult.entries.length > 0) {
-    return latestResult.entries
+    return {
+      entries: latestResult.entries,
+      triedDates,
+      lastStatus: latestResult.status,
+      lastRawBody: latestResult.rawBody,
+    }
   }
 
   if (latestResult.status !== 200) {
-    throw new Error(
-      `ANBIMA VNA API returned HTTP ${latestResult.status}. Raw response: ${latestResult.rawBody.slice(0, 500)}`,
-    )
+    return {
+      entries: [],
+      triedDates,
+      lastStatus: latestResult.status,
+      lastRawBody: latestResult.rawBody,
+    }
   }
 
   const dates = getLast5BusinessDays()
@@ -170,27 +219,34 @@ async function fetchVnaWithFallback(token: string, clientId: string): Promise<Vn
   let lastRawBody = latestResult.rawBody
 
   for (const date of dates) {
+    triedDates.push(date)
     const dateResult = await fetchVnaForDate(token, clientId, date)
     lastStatus = dateResult.status
     lastRawBody = dateResult.rawBody
 
     if (dateResult.entries.length > 0) {
-      return dateResult.entries
+      return {
+        entries: dateResult.entries,
+        triedDates,
+        lastStatus: dateResult.status,
+        lastRawBody: dateResult.rawBody,
+      }
     }
 
     if (dateResult.status !== 200) {
-      throw new Error(
-        `ANBIMA VNA API returned HTTP ${dateResult.status} for date ${date}. Raw response: ${dateResult.rawBody.slice(0, 500)}`,
-      )
+      return {
+        entries: [],
+        triedDates,
+        lastStatus: dateResult.status,
+        lastRawBody: dateResult.rawBody,
+      }
     }
   }
 
-  throw new Error(
-    `No VNA entries returned from ANBIMA after trying latest + 5 business days. Last API status: ${lastStatus}. Raw response: ${lastRawBody.slice(0, 500)}`,
-  )
+  return { entries: [], triedDates, lastStatus, lastRawBody }
 }
 
-async function upsertVnaHistory(entries: VnaEntry[]): Promise<void> {
+async function insertVnaHistory(entries: VnaEntry[]): Promise<void> {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
   const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   const supabase = createClient(supabaseUrl, supabaseKey)
@@ -207,6 +263,7 @@ async function upsertVnaHistory(entries: VnaEntry[]): Promise<void> {
 
   const { error } = await supabase.from('vna_history').upsert(rows, {
     onConflict: 'reference_date,bond_type',
+    ignoreDuplicates: true,
   })
 
   if (error) {
@@ -238,8 +295,28 @@ Deno.serve(async (req: Request) => {
     }
 
     const token = await getAnbimaToken(clientId, clientSecret)
-    const entries = await fetchVnaWithFallback(token, clientId)
-    await upsertVnaHistory(entries)
+    const { entries, triedDates, lastStatus, lastRawBody } = await fetchVnaWithFallback(
+      token,
+      clientId,
+    )
+
+    if (entries.length === 0) {
+      const isApiError = lastStatus !== 200
+      return okResponse({
+        success: false,
+        error: isApiError
+          ? `ANBIMA VNA API returned HTTP ${lastStatus}. Raw response: ${lastRawBody.slice(0, 500)}`
+          : `ANBIMA API returned status 200 but no titles were found in the response. The "titulos" array may be missing or empty. Dates attempted: ${triedDates.join(', ')}. Last raw response (truncated): ${lastRawBody.slice(0, 500)}`,
+        errorType: isApiError ? 'API_ERROR' : 'EMPTY_RESPONSE_ERROR',
+        entries: [],
+        date: null,
+        fetchedAt: new Date().toISOString(),
+        source: 'ANBIMA',
+        triedDates,
+      })
+    }
+
+    await insertVnaHistory(entries)
 
     const target = entries.find((e) => e.code === '760199') || entries[0]
 
@@ -276,6 +353,8 @@ Deno.serve(async (req: Request) => {
           errorType = 'RATE_LIMIT_ERROR'
         } else if (msg.includes('database')) {
           errorType = 'DATABASE_ERROR'
+        } else if (msg.includes('parse') || msg.includes('json') || msg.includes('html')) {
+          errorType = 'PARSE_ERROR'
         } else if (msg.includes('no vna entries') || msg.includes('empty')) {
           errorType = 'EMPTY_RESPONSE_ERROR'
         } else {

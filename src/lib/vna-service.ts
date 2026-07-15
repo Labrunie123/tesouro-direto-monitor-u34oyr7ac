@@ -15,6 +15,9 @@ export type VnaErrorType =
   | 'TIMEOUT_ERROR'
   | 'API_ERROR'
   | 'PARSE_ERROR'
+  | 'DATABASE_ERROR'
+  | 'EMPTY_RESPONSE_ERROR'
+  | 'CONFIG_ERROR'
   | 'UNKNOWN_ERROR'
 
 export interface VnaFetchResult {
