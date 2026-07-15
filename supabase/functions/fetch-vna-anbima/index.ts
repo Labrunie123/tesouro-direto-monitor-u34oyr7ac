@@ -2,7 +2,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 
-const ANBIMA_TOKEN_URL = 'https://api-sandbox.anbima.com.br/oauth/access-token'
+const ANBIMA_TOKEN_URL = 'https://api.anbima.com.br/oauth/access-token'
 const ANBIMA_VNA_URL =
   'https://api-sandbox.anbima.com.br/feed/precos-indices/v1/titulos-publicos/vna'
 
@@ -217,12 +217,13 @@ Deno.serve(async (req: Request) => {
           success: false,
           error: error.message,
           errorType: 'AUTH_ERROR',
+          anbimaStatus: error.status,
           entries: [],
           date: null,
           fetchedAt: new Date().toISOString(),
           source: 'ANBIMA',
         },
-        401,
+        error.status >= 400 && error.status < 600 ? error.status : 401,
       )
     }
 

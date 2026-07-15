@@ -1,3 +1,4 @@
+import { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase/client'
 import type { VnaEntry, VnaFetchResult, VnaErrorType } from '@/lib/vna-service'
 
@@ -43,6 +44,38 @@ function cacheToLocalStorage(entries: VnaEntry[], date: string, fetchedAt: strin
   }
 }
 
+function buildCachedResult(
+  existingRows: VnaHistoryRow[],
+  error: string,
+  errorType: VnaErrorType,
+): VnaFetchResult {
+  const entries = existingRows.map(mapRowToVnaEntry)
+  return {
+    entries,
+    date: existingRows[0].reference_date,
+    status: 'cached',
+    fetchedAt: existingRows[0].created_at,
+    source: 'Supabase-Cached',
+    error,
+    errorType,
+  }
+}
+
+async function readErrorBody(
+  context: Response,
+): Promise<{ error?: string; errorType?: string; anbimaStatus?: number } | null> {
+  try {
+    return await context.json()
+  } catch {
+    try {
+      const text = await context.text()
+      return { error: text }
+    } catch {
+      return null
+    }
+  }
+}
+
 export async function fetchVnaFromSupabase(): Promise<VnaFetchResult> {
   const expectedDate = getMostRecentBusinessDay()
   let existingRows: VnaHistoryRow[] | null = null
@@ -82,16 +115,47 @@ export async function fetchVnaFromSupabase(): Promise<VnaFetchResult> {
   try {
     const { data, error } = await supabase.functions.invoke('fetch-vna-anbima')
 
+    if (error instanceof FunctionsHttpError) {
+      const errorBody = await readErrorBody(error.context)
+      const status = error.context.status
+      const errMsg = errorBody?.error || `Error ${status}: Edge function failed`
+      lastErrorType = (errorBody?.errorType as VnaErrorType) || 'API_ERROR'
+
+      const formattedMsg = `Error ${status}: ${errMsg}`
+
+      console.error('[vna-service] Edge function HTTP error:', {
+        status,
+        message: errMsg,
+        type: lastErrorType,
+      })
+
+      if (existingRows && existingRows.length > 0) {
+        return buildCachedResult(existingRows, formattedMsg, lastErrorType)
+      }
+
+      return {
+        entries: [],
+        date: expectedDate,
+        status: 'default',
+        fetchedAt: null,
+        error: formattedMsg,
+        errorType: lastErrorType,
+      }
+    }
+
     if (error) {
-      console.warn('[vna-service] Edge function returned error:', error)
+      const errMsg = error.message || 'Edge function invocation failed'
+      lastErrorType = 'NETWORK_ERROR'
+      console.warn('[vna-service] Edge function invocation error:', errMsg)
+      throw new Error(errMsg)
     }
 
     if (!data?.success) {
-      let errMsg = data?.error || error?.message || 'Edge function returned failure'
+      let errMsg = data?.error || 'Edge function returned failure'
       lastErrorType = (data?.errorType as VnaErrorType) || 'API_ERROR'
 
       if (data?.anbimaStatus) {
-        errMsg = `[ANBIMA ${data.anbimaStatus}] ${errMsg}`
+        errMsg = `Error ${data.anbimaStatus}: ${errMsg}`
       }
 
       console.error('[vna-service] Edge function error detail:', {
@@ -124,16 +188,7 @@ export async function fetchVnaFromSupabase(): Promise<VnaFetchResult> {
     console.warn('[vna-service] Edge function invocation failed:', errMsg)
 
     if (existingRows && existingRows.length > 0) {
-      const entries = existingRows.map(mapRowToVnaEntry)
-      return {
-        entries,
-        date: existingRows[0].reference_date,
-        status: 'cached',
-        fetchedAt: existingRows[0].created_at,
-        source: 'Supabase-Cached',
-        error: errMsg,
-        errorType: errType,
-      }
+      return buildCachedResult(existingRows, errMsg, errType)
     }
 
     return {
