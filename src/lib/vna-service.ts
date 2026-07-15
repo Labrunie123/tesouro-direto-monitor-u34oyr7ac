@@ -1,120 +1,219 @@
 export interface VnaEntry {
+  code: string
   title: string
   vna: number
   date: string
 }
 
-const ANBIMA_VNA_URL = 'https://www.anbima.com.br/informacoes/vna/vna.asp'
+const TARGET_SELIC_CODE = '760199'
+const FETCH_CACHE_KEY = '@tesouro-vision:vna-fetch-cache'
+const FETCH_DATE_KEY = '@tesouro-vision:vna-fetch-date'
+const ANBIMA_URL = 'https://data.anbima.com.br/titulos-publicos/valor-nominal-atualizado'
 
-const CORS_PROXIES: ((url: string) => string)[] = [
-  (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-  (url: string) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
-]
-
-const USE_LIVE_FETCH = false
-
-const HARDCODED_VNA_VALUE = 4743.207764
-
-function todayISO(): string {
-  return new Date().toISOString().split('T')[0]
-}
+const todayStr = () => new Date().toISOString().split('T')[0]
 
 export const DEFAULT_VNA_DATA: VnaEntry[] = [
-  { title: 'Tesouro IPCA+ com Juros Semestrais 2045', vna: HARDCODED_VNA_VALUE, date: todayISO() },
-  { title: 'Tesouro IPCA+ 2024', vna: 4985.23, date: todayISO() },
-  { title: 'Tesouro IPCA+ 2026', vna: 4125.87, date: todayISO() },
-  { title: 'Tesouro IPCA+ 2029', vna: 3890.34, date: todayISO() },
-  { title: 'Tesouro IPCA+ 2035', vna: 3520.45, date: todayISO() },
-  { title: 'Tesouro IPCA+ com Juros Semestrais 2032', vna: 3285.12, date: todayISO() },
+  {
+    code: '760199',
+    title: 'Tesouro IPCA+ com Juros Semestrais 2045',
+    vna: 4743.21,
+    date: todayStr(),
+  },
+  {
+    code: '760198',
+    title: 'Tesouro IPCA+ com Juros Semestrais 2035',
+    vna: 3128.45,
+    date: todayStr(),
+  },
+  {
+    code: '760197',
+    title: 'Tesouro IPCA+ 2029',
+    vna: 2856.73,
+    date: todayStr(),
+  },
+  {
+    code: '760196',
+    title: 'Tesouro IPCA+ 2035',
+    vna: 3012.18,
+    date: todayStr(),
+  },
 ]
 
-function normalizeDate(dateStr: string): string {
-  const parts = dateStr.trim().split('/')
-  if (parts.length === 3) {
-    return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`
-  }
-  return dateStr
+const TITLE_CODE_MAP: Record<string, string> = {
+  '2045': '760199',
+  '2035': '760198',
+  '2029': '760197',
 }
 
-function parseAnbimaHtml(html: string): { entries: VnaEntry[]; date: string } {
-  const entries: VnaEntry[] = []
-  const tableRegex = /<table[^>]*>([\s\S]*?)<\/table>/gi
-  let tableMatch: RegExpExecArray | null
-  let firstDate = todayISO()
-
-  while ((tableMatch = tableRegex.exec(html)) !== null) {
-    const tableHtml = tableMatch[1]
-    const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi
-    let rowMatch: RegExpExecArray | null
-
-    while ((rowMatch = rowRegex.exec(tableHtml)) !== null) {
-      const rowHtml = rowMatch[1]
-      const cells: string[] = []
-      const cellRegex = /<td[^>]*>([\s\S]*?)<\/td>/gi
-      let cellMatch: RegExpExecArray | null
-
-      while ((cellMatch = cellRegex.exec(rowHtml)) !== null) {
-        const cellText = cellMatch[1]
-          .replace(/<[^>]*>/g, '')
-          .replace(/&nbsp;/g, ' ')
-          .replace(/&amp;/g, '&')
-          .trim()
-        cells.push(cellText)
-      }
-
-      if (cells.length >= 2) {
-        const title = cells[0]
-        const vnaStr = cells[1].replace(/[^\d,]/g, '').replace(',', '.')
-        const dateStr = cells[2] || todayISO()
-        const vna = parseFloat(vnaStr)
-
-        if (title && !isNaN(vna) && vna > 0) {
-          const normalizedDate = normalizeDate(dateStr)
-          if (entries.length === 0) firstDate = normalizedDate
-          entries.push({ title, vna, date: normalizedDate })
-        }
-      }
-    }
-  }
-
-  if (entries.length === 0) {
-    return { entries: DEFAULT_VNA_DATA, date: todayISO() }
-  }
-  return { entries, date: firstDate }
-}
-
-export async function fetchVnaData(): Promise<{ entries: VnaEntry[]; date: string }> {
-  if (!USE_LIVE_FETCH) {
-    return { entries: DEFAULT_VNA_DATA, date: todayISO() }
-  }
-
-  for (const proxy of CORS_PROXIES) {
-    try {
-      const response = await fetch(proxy(ANBIMA_VNA_URL))
-      if (!response.ok) continue
-      const html = await response.text()
-      const parsed = parseAnbimaHtml(html)
-      if (parsed.entries.length > 0) return parsed
-    } catch {
-      // Try next proxy
-    }
-  }
-  return { entries: DEFAULT_VNA_DATA, date: todayISO() }
-}
-
-export function findVnaForTitle(vnaData: VnaEntry[], title: string): number | null {
-  const exact = vnaData.find((e) => e.title === title)
+export function findVnaForTitle(entries: VnaEntry[], title: string): number | null {
+  const exact = entries.find((e) => e.title === title && e.vna > 0)
   if (exact) return exact.vna
 
-  const partial = vnaData.find((e) => title.includes(e.title) || e.title.includes(title))
-  if (partial) return partial.vna
+  const partial = entries.find((e) => title.includes(e.title) || e.title.includes(title))
+  if (partial && partial.vna > 0) return partial.vna
 
-  const yearMatch = title.match(/(\d{4})/)
-  if (yearMatch) {
-    const year = yearMatch[1]
-    const byYear = vnaData.find((e) => e.title.includes(year))
-    if (byYear) return byYear.vna
+  for (const [year, code] of Object.entries(TITLE_CODE_MAP)) {
+    if (title.includes(year)) {
+      const byCode = entries.find((e) => e.code === code && e.vna > 0)
+      if (byCode) return byCode.vna
+    }
+  }
+
+  if (title.includes('IPCA+')) {
+    const target = entries.find((e) => e.code === TARGET_SELIC_CODE && e.vna > 0)
+    if (target) return target.vna
   }
 
   return null
+}
+
+function parseAnbimaJson(data: unknown): VnaEntry[] {
+  const entries: VnaEntry[] = []
+  const date = todayStr()
+
+  const records: any[] = Array.isArray(data)
+    ? data
+    : Array.isArray((data as any)?.data)
+      ? (data as any).data
+      : Array.isArray((data as any)?.items)
+        ? (data as any).items
+        : Array.isArray((data as any)?.results)
+          ? (data as any).results
+          : []
+
+  for (const record of records) {
+    const code = record.codigoSelic || record.codigo_selic || record.code || record.codigo || ''
+    const title = record.titulo || record.title || record.nome || record.name || ''
+    const vnaRaw =
+      record.valorNominalAtualizado ||
+      record.valor_nominal_atualizado ||
+      record.vna ||
+      record.valor ||
+      0
+    const vna =
+      typeof vnaRaw === 'string'
+        ? parseFloat(vnaRaw.replace(/\./g, '').replace(',', '.'))
+        : Number(vnaRaw)
+
+    if (code && vna > 0) {
+      entries.push({ code: String(code), title, vna, date })
+    }
+  }
+
+  return entries
+}
+
+function parseAnbimaHtml(html: string): VnaEntry[] {
+  const entries: VnaEntry[] = []
+  const date = todayStr()
+
+  const jsonMatches = html.match(/<script[^>]*type="application\/json"[^>]*>([\s\S]*?)<\/script>/gi)
+  if (jsonMatches) {
+    for (const match of jsonMatches) {
+      try {
+        const jsonStr = match.replace(/<script[^>]*>/i, '').replace(/<\/script>/i, '')
+        const parsed = JSON.parse(jsonStr)
+        const extracted = parseAnbimaJson(parsed)
+        if (extracted.length > 0) return extracted
+      } catch {
+        continue
+      }
+    }
+  }
+
+  const codeRegex = /760199[\s\S]{0,500}?(\d{1,3}(?:\.\d{3})*,\d{2,})/gi
+  let match: RegExpExecArray | null
+  while ((match = codeRegex.exec(html)) !== null) {
+    const vnaStr = match[1]
+    const vna = parseFloat(vnaStr.replace(/\./g, '').replace(',', '.'))
+    if (vna > 0) {
+      entries.push({
+        code: TARGET_SELIC_CODE,
+        title: 'Tesouro IPCA+ com Juros Semestrais 2045',
+        vna,
+        date,
+      })
+    }
+  }
+
+  return entries
+}
+
+async function fetchVnaFromAnbima(): Promise<VnaEntry[]> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 10000)
+
+  try {
+    const response = await fetch(ANBIMA_URL, {
+      signal: controller.signal,
+      headers: {
+        Accept: 'application/json, text/html',
+      },
+    })
+
+    if (!response.ok) {
+      throw new Error(`ANBIMA returned status ${response.status}`)
+    }
+
+    const contentType = response.headers.get('content-type') || ''
+    const text = await response.text()
+
+    if (contentType.includes('application/json')) {
+      try {
+        const data = JSON.parse(text)
+        const entries = parseAnbimaJson(data)
+        if (entries.length > 0) return entries
+      } catch {
+        // fall through to HTML parsing
+      }
+    }
+
+    const entries = parseAnbimaHtml(text)
+    if (entries.length > 0) return entries
+
+    throw new Error('Could not extract VNA data from ANBIMA response')
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+function getCachedEntries(): VnaEntry[] | null {
+  try {
+    const cached = localStorage.getItem(FETCH_CACHE_KEY)
+    if (cached) return JSON.parse(cached)
+  } catch {
+    // ignore
+  }
+  return null
+}
+
+export async function fetchVnaData(): Promise<{
+  entries: VnaEntry[]
+  date: string
+}> {
+  const today = todayStr()
+  const lastFetchDate = localStorage.getItem(FETCH_DATE_KEY)
+
+  if (lastFetchDate === today) {
+    const cached = getCachedEntries()
+    if (cached && cached.length > 0) {
+      return { entries: cached, date: today }
+    }
+  }
+
+  try {
+    const entries = await fetchVnaFromAnbima()
+    localStorage.setItem(FETCH_CACHE_KEY, JSON.stringify(entries))
+    localStorage.setItem(FETCH_DATE_KEY, today)
+    return { entries, date: today }
+  } catch (e) {
+    console.warn('ANBIMA VNA fetch failed, using cached/default data', e)
+
+    const cached = getCachedEntries()
+    if (cached && cached.length > 0) {
+      return { entries: cached, date: lastFetchDate || today }
+    }
+
+    return { entries: DEFAULT_VNA_DATA, date: lastFetchDate || today }
+  }
 }

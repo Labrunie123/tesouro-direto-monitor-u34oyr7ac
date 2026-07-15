@@ -22,7 +22,10 @@ export function formatPercent(value: number): string {
 }
 
 export function formatVna(value: number): string {
-  return formatCurrency(value)
+  return new Intl.NumberFormat('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value)
 }
 
 export function parseExcelDate(dateStr: string): string {

@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
-import { RefreshCw } from 'lucide-react'
+import { RefreshCw, AlertCircle } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import usePortfolioStore from '@/stores/usePortfolioStore'
 import { formatVna, formatDate } from '@/lib/formatters'
 import { findVnaForTitle } from '@/lib/vna-service'
@@ -19,6 +20,15 @@ export function VnaCard() {
     return fallback?.vna ?? 0
   }, [investments, vnaData])
 
+  const isStale = useMemo(() => {
+    if (!vnaDate) return false
+    const today = new Date().toISOString().split('T')[0]
+    return vnaDate !== today
+  }, [vnaDate])
+
+  const hasData = vnaValue > 0
+  const showSkeleton = vnaLoading && !hasData
+
   return (
     <Card
       className="hover:shadow-md transition-shadow animate-fade-in-up"
@@ -28,17 +38,43 @@ export function VnaCard() {
         <CardTitle className="text-sm font-medium">VNA do dia</CardTitle>
         <RefreshCw
           className={cn(
-            'h-4 w-4 text-muted-foreground cursor-pointer',
+            'h-4 w-4 text-muted-foreground cursor-pointer transition-colors hover:text-primary',
             vnaLoading && 'animate-spin',
           )}
           onClick={fetchVna}
         />
       </CardHeader>
       <CardContent>
-        <div className="text-2xl font-bold">{formatVna(vnaValue)}</div>
-        <p className="text-xs text-muted-foreground mt-1">
-          {vnaDate ? `Atualizado em ${formatDate(vnaDate)}` : 'Referência ANBIMA'}
-        </p>
+        {showSkeleton ? (
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-32" />
+            <Skeleton className="h-3 w-40" />
+          </div>
+        ) : hasData ? (
+          <>
+            <div className="text-2xl font-bold tabular-nums">{formatVna(vnaValue)}</div>
+            <p
+              className={cn(
+                'text-xs mt-1 flex items-center gap-1',
+                isStale ? 'text-amber-600 dark:text-amber-500' : 'text-muted-foreground',
+              )}
+            >
+              {isStale && <AlertCircle className="h-3 w-3 shrink-0" />}
+              {vnaDate
+                ? isStale
+                  ? `Última atualização: ${formatDate(vnaDate)}`
+                  : `Atualizado em ${formatDate(vnaDate)}`
+                : 'Referência ANBIMA · Código Selic 760199'}
+            </p>
+          </>
+        ) : (
+          <>
+            <div className="text-xl font-medium text-muted-foreground">Indisponível</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {vnaLoading ? 'Carregando...' : 'Fonte indisponível no momento'}
+            </p>
+          </>
+        )}
       </CardContent>
     </Card>
   )
