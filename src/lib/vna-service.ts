@@ -11,42 +11,15 @@ export interface VnaFetchResult {
   entries: VnaEntry[]
   date: string
   status: VnaFetchStatus
+  fetchedAt: string | null
 }
 
 const TARGET_SELIC_CODE = '760199'
 const FETCH_CACHE_KEY = '@tesouro-vision:vna-fetch-cache'
 const FETCH_DATE_KEY = '@tesouro-vision:vna-fetch-date'
-const ANBIMA_URL = 'https://data.anbima.com.br/titulos-publicos/valor-nominal-atualizado'
+const FETCH_SYNC_KEY = '@tesouro-vision:vna-fetch-sync'
 
-const CORS_PROXIES: ((url: string) => string)[] = [
-  (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-  (url) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
-  (url) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url)}`,
-]
-
-async function fetchWithFallback(url: string): Promise<Response> {
-  const attempts: { url: string }[] = [
-    { url },
-    ...CORS_PROXIES.map((proxy) => ({ url: proxy(url) })),
-  ]
-
-  for (const attempt of attempts) {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 12000)
-    try {
-      const response = await fetch(attempt.url, {
-        signal: controller.signal,
-        headers: { Accept: 'application/json, text/html' },
-      })
-      clearTimeout(timeout)
-      if (response.ok) return response
-    } catch {
-      clearTimeout(timeout)
-    }
-  }
-
-  throw new Error('All fetch attempts failed (direct and proxy)')
-}
+const HOOK_URL = import.meta.env.VITE_VNA_HOOK_URL || '/hooks/fetch-vna'
 
 const todayStr = () => new Date().toISOString().split('T')[0]
 
@@ -105,136 +78,54 @@ export function findVnaForTitle(entries: VnaEntry[], title: string): number | nu
   return null
 }
 
-function parseAnbimaJson(data: unknown): VnaEntry[] {
-  const entries: VnaEntry[] = []
-
-  const records: any[] = Array.isArray(data)
-    ? data
-    : Array.isArray((data as any)?.data)
-      ? (data as any).data
-      : Array.isArray((data as any)?.items)
-        ? (data as any).items
-        : Array.isArray((data as any)?.results)
-          ? (data as any).results
-          : []
-
-  for (const record of records) {
-    const code = record.codigoSelic || record.codigo_selic || record.code || record.codigo || ''
-    const title = record.titulo || record.title || record.nome || record.name || ''
-    const dateRaw =
-      record.dataReferencia ||
-      record.data_referencia ||
-      record.data ||
-      record.date ||
-      record.dataAtualizacao ||
-      record.data_atualizacao
-    const entryDate = dateRaw ? String(dateRaw).split('T')[0] : todayStr()
-    const vnaRaw =
-      record.valorNominalAtualizado ||
-      record.valor_nominal_atualizado ||
-      record.vna ||
-      record.valor ||
-      0
-    const vna =
-      typeof vnaRaw === 'string'
-        ? parseFloat(vnaRaw.replace(/\./g, '').replace(',', '.'))
-        : Number(vnaRaw)
-
-    if (code && vna > 0) {
-      entries.push({ code: String(code), title, vna, date: entryDate })
-    }
-  }
-
-  return entries
+interface HookResponse {
+  success: boolean
+  entries: VnaEntry[]
+  date: string | null
+  error?: string
+  fetchedAt?: string
 }
 
-function parseAnbimaHtml(html: string): VnaEntry[] {
-  const entries: VnaEntry[] = []
-  const date = todayStr()
-
-  const jsonMatches = html.match(/<script[^>]*type="application\/json"[^>]*>([\s\S]*?)<\/script>/gi)
-  if (jsonMatches) {
-    for (const match of jsonMatches) {
-      try {
-        const jsonStr = match.replace(/<script[^>]*>/i, '').replace(/<\/script>/i, '')
-        const parsed = JSON.parse(jsonStr)
-        const extracted = parseAnbimaJson(parsed)
-        if (extracted.length > 0) return extracted
-      } catch {
-        continue
-      }
-    }
-  }
-
-  const nextDataMatch = html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i)
-  if (nextDataMatch) {
-    try {
-      const parsed = JSON.parse(nextDataMatch[1])
-      const pageProps = (parsed as any)?.props?.pageProps
-      if (pageProps) {
-        const extracted = parseAnbimaJson(pageProps)
-        if (extracted.length > 0) return extracted
-      }
-    } catch {
-      // continue
-    }
-  }
-
-  const dateMatch = html.match(
-    /data[_-]?(?:referencia|atualizacao|base)["\s:>]+(\d{4}-\d{2}-\d{2})/i,
-  )
-  const refDate = dateMatch ? dateMatch[1] : date
-
-  const codeRegex = /760199[\s\S]{0,500}?(\d{1,3}(?:\.\d{3})*(?:,\d{2,}))/gi
-  let match: RegExpExecArray | null
-  while ((match = codeRegex.exec(html)) !== null) {
-    const vnaStr = match[1]
-    const vna = parseFloat(vnaStr.replace(/\./g, '').replace(',', '.'))
-    if (vna > 0) {
-      entries.push({
-        code: TARGET_SELIC_CODE,
-        title: 'Tesouro IPCA+ com Juros Semestrais 2045',
-        vna,
-        date: refDate,
-      })
-    }
-  }
-
-  const tableRowRegex =
-    /760199[\s\S]{0,300}?(\d{2}\/\d{2}\/\d{4})[\s\S]{0,300}?(\d{1,3}(?:\.\d{3})*(?:,\d{2,}))/gi
-  while ((match = tableRowRegex.exec(html)) !== null) {
-    const [d, m, y] = match[1].split('/')
-    const isoDate = `${y}-${m}-${d}`
-    const vna = parseFloat(match[2].replace(/\./g, '').replace(',', '.'))
-    if (vna > 0) {
-      entries.push({
-        code: TARGET_SELIC_CODE,
-        title: 'Tesouro IPCA+ com Juros Semestrais 2045',
-        vna,
-        date: isoDate,
-      })
-    }
-  }
-
-  return entries
-}
-
-async function fetchVnaFromAnbima(): Promise<VnaEntry[]> {
-  const response = await fetchWithFallback(ANBIMA_URL)
-  const text = await response.text()
+async function fetchFromHook(): Promise<HookResponse> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 15000)
 
   try {
-    const data = JSON.parse(text)
-    const entries = parseAnbimaJson(data)
-    if (entries.length > 0) return entries
-  } catch {
-    // not JSON, try HTML parsing
+    const response = await fetch(HOOK_URL, {
+      signal: controller.signal,
+      headers: { Accept: 'application/json' },
+    })
+    clearTimeout(timeout)
+
+    const data: HookResponse = await response.json()
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || `Hook returned status ${response.status}`)
+    }
+
+    return data
+  } catch (error) {
+    clearTimeout(timeout)
+    throw error
+  }
+}
+
+async function fetchWithRetry(maxRetries: number = 2): Promise<HookResponse> {
+  let lastError: Error | null = null
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fetchFromHook()
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error))
+      console.warn(`VNA hook fetch attempt ${attempt + 1} failed:`, lastError.message)
+      if (attempt < maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)))
+      }
+    }
   }
 
-  const entries = parseAnbimaHtml(text)
-  if (entries.length > 0) return entries
-
-  throw new Error('Could not extract VNA data from ANBIMA response')
+  throw lastError || new Error('All retry attempts failed')
 }
 
 function getCachedEntries(): VnaEntry[] | null {
@@ -247,25 +138,69 @@ function getCachedEntries(): VnaEntry[] | null {
   return null
 }
 
+function getCachedSyncTime(): string | null {
+  try {
+    return localStorage.getItem(FETCH_SYNC_KEY)
+  } catch {
+    return null
+  }
+}
+
+function isBusinessDay(date: Date): boolean {
+  const day = date.getDay()
+  return day !== 0 && day !== 6
+}
+
+function getMostRecentBusinessDay(): string {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  if (isBusinessDay(today)) return today.toISOString().split('T')[0]
+
+  const friday = new Date(today)
+  friday.setDate(friday.getDate() - (today.getDay() === 0 ? 2 : 1))
+  return friday.toISOString().split('T')[0]
+}
+
 export async function fetchVnaData(): Promise<VnaFetchResult> {
   const today = todayStr()
   const lastFetchDate = localStorage.getItem(FETCH_DATE_KEY)
+  const expectedDate = getMostRecentBusinessDay()
 
   try {
-    const entries = await fetchVnaFromAnbima()
-    const targetEntry = entries.find((e) => e.code === TARGET_SELIC_CODE)
-    const referenceDate = targetEntry?.date || today
-    localStorage.setItem(FETCH_CACHE_KEY, JSON.stringify(entries))
+    const result = await fetchWithRetry(2)
+
+    const targetEntry = result.entries.find((e) => e.code === TARGET_SELIC_CODE && e.vna > 0)
+    const referenceDate = targetEntry?.date || result.date || today
+
+    localStorage.setItem(FETCH_CACHE_KEY, JSON.stringify(result.entries))
     localStorage.setItem(FETCH_DATE_KEY, referenceDate)
-    return { entries, date: referenceDate, status: 'fresh' }
+    localStorage.setItem(FETCH_SYNC_KEY, result.fetchedAt || new Date().toISOString())
+
+    return {
+      entries: result.entries,
+      date: referenceDate,
+      status: 'fresh',
+      fetchedAt: result.fetchedAt || new Date().toISOString(),
+    }
   } catch (e) {
-    console.warn('ANBIMA VNA fetch failed, using cached/default data', e)
+    console.error('VNA backend hook fetch failed, falling back to cached/default data', e)
 
     const cached = getCachedEntries()
     if (cached && cached.length > 0) {
-      return { entries: cached, date: lastFetchDate || today, status: 'cached' }
+      return {
+        entries: cached,
+        date: lastFetchDate || expectedDate,
+        status: 'cached',
+        fetchedAt: getCachedSyncTime(),
+      }
     }
 
-    return { entries: DEFAULT_VNA_DATA, date: lastFetchDate || today, status: 'default' }
+    return {
+      entries: DEFAULT_VNA_DATA,
+      date: expectedDate,
+      status: 'default',
+      fetchedAt: null,
+    }
   }
 }

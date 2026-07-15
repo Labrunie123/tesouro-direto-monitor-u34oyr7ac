@@ -1,4 +1,10 @@
-import { VnaEntry, fetchVnaData, findVnaForTitle, DEFAULT_VNA_DATA } from '@/lib/vna-service'
+import {
+  VnaEntry,
+  fetchVnaData,
+  findVnaForTitle,
+  DEFAULT_VNA_DATA,
+  VnaFetchResult,
+} from '@/lib/vna-service'
 import React, {
   createContext,
   useContext,
@@ -96,6 +102,7 @@ interface PortfolioState {
   vnaDate: string
   vnaLoading: boolean
   vnaError: boolean
+  vnaLastSync: string | null
   fetchVna: () => Promise<void>
 }
 
@@ -346,6 +353,14 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     }
   })
 
+  const [vnaLastSync, setVnaLastSync] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('@tesouro-vision:vna-fetch-sync')
+    } catch {
+      return null
+    }
+  })
+
   useEffect(() => {
     try {
       localStorage.setItem('@tesouro-vision:investments-all', JSON.stringify(allInvestments))
@@ -516,12 +531,13 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
   const fetchVna = useCallback(async () => {
     setVnaLoading(true)
     try {
-      const result = await fetchVnaData()
+      const result: VnaFetchResult = await fetchVnaData()
       setVnaData(result.entries)
       setVnaDate(result.date)
       setVnaError(result.status !== 'fresh')
+      setVnaLastSync(result.fetchedAt)
     } catch (e) {
-      console.warn('Failed to fetch VNA data', e)
+      console.error('Failed to fetch VNA data', e)
       setVnaError(true)
     } finally {
       setVnaLoading(false)
@@ -724,6 +740,7 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
         vnaDate,
         vnaLoading,
         vnaError,
+        vnaLastSync,
         fetchVna,
       },
     },
