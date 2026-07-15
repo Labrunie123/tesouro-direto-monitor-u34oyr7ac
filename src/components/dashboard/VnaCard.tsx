@@ -35,7 +35,9 @@ export function VnaCard() {
       style={{ animationDelay: '500ms' }}
     >
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium">VNA do dia</CardTitle>
+        <CardTitle className="text-sm font-medium">
+          {vnaDate ? `VNA (Ref: ${formatDate(vnaDate)})` : 'VNA do dia'}
+        </CardTitle>
         <RefreshCw
           className={cn(
             'h-4 w-4 text-muted-foreground cursor-pointer transition-colors hover:text-primary',

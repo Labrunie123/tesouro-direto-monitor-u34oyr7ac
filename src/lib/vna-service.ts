@@ -10,6 +10,35 @@ const FETCH_CACHE_KEY = '@tesouro-vision:vna-fetch-cache'
 const FETCH_DATE_KEY = '@tesouro-vision:vna-fetch-date'
 const ANBIMA_URL = 'https://data.anbima.com.br/titulos-publicos/valor-nominal-atualizado'
 
+const CORS_PROXIES: ((url: string) => string)[] = [
+  (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+  (url) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+]
+
+async function fetchWithFallback(url: string): Promise<Response> {
+  const attempts: { url: string }[] = [
+    { url },
+    ...CORS_PROXIES.map((proxy) => ({ url: proxy(url) })),
+  ]
+
+  for (const attempt of attempts) {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 12000)
+    try {
+      const response = await fetch(attempt.url, {
+        signal: controller.signal,
+        headers: { Accept: 'application/json, text/html' },
+      })
+      clearTimeout(timeout)
+      if (response.ok) return response
+    } catch {
+      clearTimeout(timeout)
+    }
+  }
+
+  throw new Error('All fetch attempts failed (direct and proxy)')
+}
+
 const todayStr = () => new Date().toISOString().split('T')[0]
 
 export const DEFAULT_VNA_DATA: VnaEntry[] = [
@@ -152,41 +181,21 @@ function parseAnbimaHtml(html: string): VnaEntry[] {
 }
 
 async function fetchVnaFromAnbima(): Promise<VnaEntry[]> {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 10000)
+  const response = await fetchWithFallback(ANBIMA_URL)
+  const text = await response.text()
 
   try {
-    const response = await fetch(ANBIMA_URL, {
-      signal: controller.signal,
-      headers: {
-        Accept: 'application/json, text/html',
-      },
-    })
-
-    if (!response.ok) {
-      throw new Error(`ANBIMA returned status ${response.status}`)
-    }
-
-    const contentType = response.headers.get('content-type') || ''
-    const text = await response.text()
-
-    if (contentType.includes('application/json')) {
-      try {
-        const data = JSON.parse(text)
-        const entries = parseAnbimaJson(data)
-        if (entries.length > 0) return entries
-      } catch {
-        // fall through to HTML parsing
-      }
-    }
-
-    const entries = parseAnbimaHtml(text)
+    const data = JSON.parse(text)
+    const entries = parseAnbimaJson(data)
     if (entries.length > 0) return entries
-
-    throw new Error('Could not extract VNA data from ANBIMA response')
-  } finally {
-    clearTimeout(timeout)
+  } catch {
+    // not JSON, try HTML parsing
   }
+
+  const entries = parseAnbimaHtml(text)
+  if (entries.length > 0) return entries
+
+  throw new Error('Could not extract VNA data from ANBIMA response')
 }
 
 function getCachedEntries(): VnaEntry[] | null {
@@ -205,13 +214,6 @@ export async function fetchVnaData(): Promise<{
 }> {
   const today = todayStr()
   const lastFetchDate = localStorage.getItem(FETCH_DATE_KEY)
-
-  if (lastFetchDate === today) {
-    const cached = getCachedEntries()
-    if (cached && cached.length > 0) {
-      return { entries: cached, date: today }
-    }
-  }
 
   try {
     const entries = await fetchVnaFromAnbima()
