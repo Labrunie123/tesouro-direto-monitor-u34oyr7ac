@@ -2,6 +2,8 @@ export function formatCurrency(value: number): string {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(value)
 }
 
@@ -17,6 +19,10 @@ export function formatPercent(value: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value / 100)
+}
+
+export function formatVna(value: number): string {
+  return formatCurrency(value)
 }
 
 export function parseExcelDate(dateStr: string): string {

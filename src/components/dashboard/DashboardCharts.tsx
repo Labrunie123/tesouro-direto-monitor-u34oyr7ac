@@ -3,7 +3,6 @@ import {
   PieChart,
   Pie,
   Cell,
-  ResponsiveContainer,
   Tooltip as RechartsTooltip,
   Legend,
   LineChart,
@@ -113,7 +112,7 @@ export function DashboardCharts() {
           </CardHeader>
           <CardContent className="flex-1 flex flex-col min-h-[300px]">
             {allocationByTypeData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={280}>
+              <ChartContainer className="h-[280px] w-full" config={{}}>
                 <PieChart>
                   <Pie
                     data={allocationByTypeData}
@@ -139,7 +138,7 @@ export function DashboardCharts() {
                   />
                   <Legend verticalAlign="bottom" height={36} iconType="circle" />
                 </PieChart>
-              </ResponsiveContainer>
+              </ChartContainer>
             ) : (
               <div className="flex flex-col items-center justify-center text-muted-foreground h-full">
                 <PieChartIcon className="h-12 w-12 mb-2 opacity-20" />
@@ -156,7 +155,7 @@ export function DashboardCharts() {
           </CardHeader>
           <CardContent className="flex-1 flex flex-col min-h-[300px]">
             {allocationData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={280}>
+              <ChartContainer className="h-[280px] w-full" config={{}}>
                 <PieChart>
                   <Pie
                     data={allocationData}
@@ -182,7 +181,7 @@ export function DashboardCharts() {
                   />
                   <Legend verticalAlign="bottom" height={36} iconType="circle" />
                 </PieChart>
-              </ResponsiveContainer>
+              </ChartContainer>
             ) : (
               <div className="flex flex-col items-center justify-center text-muted-foreground h-full">
                 <PieChartIcon className="h-12 w-12 mb-2 opacity-20" />

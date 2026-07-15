@@ -1,3 +1,4 @@
+import { VnaEntry, fetchVnaData, findVnaForTitle, DEFAULT_VNA_DATA } from '@/lib/vna-service'
 import React, {
   createContext,
   useContext,
@@ -91,6 +92,10 @@ interface PortfolioState {
   notifications: Notification[]
   calculateCurrentValue: (inv: Investment, targetDate?: Date) => number
   getYieldForPeriod: (inv: Investment, period: YieldPeriod) => number
+  vnaData: VnaEntry[]
+  vnaDate: string
+  vnaLoading: boolean
+  fetchVna: () => Promise<void>
 }
 
 const now = new Date()
@@ -312,6 +317,27 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     }
   })
 
+  const [vnaData, setVnaData] = useState<VnaEntry[]>(() => {
+    try {
+      const saved = localStorage.getItem('@tesouro-vision:vna-data')
+      return saved ? JSON.parse(saved) : DEFAULT_VNA_DATA
+    } catch {
+      return DEFAULT_VNA_DATA
+    }
+  })
+
+  const [vnaDate, setVnaDate] = useState<string>(() => {
+    try {
+      return (
+        localStorage.getItem('@tesouro-vision:vna-date') || new Date().toISOString().split('T')[0]
+      )
+    } catch {
+      return new Date().toISOString().split('T')[0]
+    }
+  })
+
+  const [vnaLoading, setVnaLoading] = useState(false)
+
   useEffect(() => {
     try {
       localStorage.setItem('@tesouro-vision:investments-all', JSON.stringify(allInvestments))
@@ -351,6 +377,22 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
       /* intentionally ignored */
     }
   }, [connectionLogs])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('@tesouro-vision:vna-data', JSON.stringify(vnaData))
+    } catch {
+      /* intentionally ignored */
+    }
+  }, [vnaData])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('@tesouro-vision:vna-date', vnaDate)
+    } catch {
+      /* intentionally ignored */
+    }
+  }, [vnaDate])
 
   useEffect(() => {
     try {
@@ -455,6 +497,23 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     })
   }
 
+  const fetchVna = useCallback(async () => {
+    setVnaLoading(true)
+    try {
+      const result = await fetchVnaData()
+      setVnaData(result.entries)
+      setVnaDate(result.date)
+    } catch (e) {
+      console.warn('Failed to fetch VNA data', e)
+    } finally {
+      setVnaLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchVna()
+  }, [fetchVna])
+
   const toggleBroker = (id: string) =>
     setBrokers((p) =>
       p.map((b) =>
@@ -483,6 +542,10 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
 
   const calculateCurrentValue = useCallback(
     (inv: Investment, targetDate?: Date) => {
+      if (inv.type === 'IPCA+') {
+        const vna = findVnaForTitle(vnaData, inv.title)
+        if (vna !== null && vna > 0) return vna
+      }
       const date = targetDate || new Date()
       const yearsElapsed = Math.max(
         0,
@@ -492,7 +555,7 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
         inv.type === 'Prefixado' ? inv.rate / 100 : (inv.rate + settings.ipcaAverage24m) / 100
       return inv.purchasePrice * Math.pow(1 + mockYieldRate, yearsElapsed)
     },
-    [settings.ipcaAverage24m],
+    [settings.ipcaAverage24m, vnaData],
   )
 
   const getYieldForPeriod = useCallback(
@@ -639,6 +702,10 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
         notifications,
         calculateCurrentValue,
         getYieldForPeriod,
+        vnaData,
+        vnaDate,
+        vnaLoading,
+        fetchVna,
       },
     },
     children,

@@ -24,7 +24,7 @@ export function calculateMetrics(
   const iv = inv.purchasePrice * inv.quantity
   const gv = calculateCurrentValue(inv) * inv.quantity
   const tr = getTaxRate(inv.purchaseDate)
-  const ir = gv * tr
+  const ir = Math.max(0, gv - iv) * tr
   const nv = gv - ir
   const netYield = iv > 0 ? ((nv - iv) / iv) * 100 : 0
   return { iv, gv, tr, ir, nv, netYield }
