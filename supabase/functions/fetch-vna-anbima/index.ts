@@ -234,12 +234,7 @@ async function fetchVnaWithFallback(
     }
 
     if (dateResult.status !== 200) {
-      return {
-        entries: [],
-        triedDates,
-        lastStatus: dateResult.status,
-        lastRawBody: dateResult.rawBody,
-      }
+      return { entries: [], triedDates, lastStatus: dateResult.status, lastRawBody: dateResult.rawBody }
     }
   }
 
@@ -295,10 +290,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const token = await getAnbimaToken(clientId, clientSecret)
-    const { entries, triedDates, lastStatus, lastRawBody } = await fetchVnaWithFallback(
-      token,
-      clientId,
-    )
+    const { entries, triedDates, lastStatus, lastRawBody } = await fetchVnaWithFallback(token, clientId)
 
     if (entries.length === 0) {
       const isApiError = lastStatus !== 200
