@@ -442,8 +442,8 @@ export function VnaCard() {
                 {vnaDate
                   ? isStale
                     ? `Valor de referência: ${formatDate(vnaDate)} (ainda não publicado hoje)`
-                    : `Atualizado em ${formatDate(vnaDate)} · ANBIMA · Selic 760199`
-                  : 'Referência ANBIMA · Código Selic 760199'}{' '}
+                    : `Atualizado em ${formatDate(vnaDate)} · ANBIMA · NTN-B 15/07/2026`
+                  : 'Referência ANBIMA · NTN-B 15/07/2026'}{' '}
               </p>
             )}
             {formattedSyncTime && (
@@ -500,9 +500,9 @@ export function VnaCard() {
           <DialogHeader>
             <DialogTitle>Entrada Manual de VNA</DialogTitle>
             <DialogDescription>
-              Digite o valor do VNA para o título Selic 760199. Este valor substituirá a busca
-              automática.
-            </DialogDescription>
+              Digite o valor do VNA para o NTN-B com vencimento em 15/07/2026. Este valor
+              substituirá a busca automática.
+            </DialogDescription>{' '}
           </DialogHeader>
           <div className="space-y-2 py-4">
             <Label htmlFor="vna-input">Valor do VNA (R$)</Label>

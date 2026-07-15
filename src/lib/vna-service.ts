@@ -30,7 +30,8 @@ export interface VnaFetchResult {
   source?: string
 }
 
-const TARGET_SELIC_CODE = '760199'
+const TARGET_BOND_TYPE = 'NTN-B 2026-07-15'
+const TARGET_MATURITY_DATE = '2026-07-15'
 const FETCH_CACHE_KEY = '@tesouro-vision:vna-fetch-cache'
 const FETCH_DATE_KEY = '@tesouro-vision:vna-fetch-date'
 const FETCH_SYNC_KEY = '@tesouro-vision:vna-fetch-sync'
@@ -41,43 +42,24 @@ const todayStr = () => new Date().toISOString().split('T')[0]
 export const DEFAULT_VNA_DATA: VnaEntry[] = [
   {
     code: '760199',
-    title: 'Tesouro IPCA+ com Juros Semestrais 2045',
-    vna: 4743.207764,
+    title: `NTN-B ${TARGET_MATURITY_DATE}`,
+    vna: 2856.732451,
     date: todayStr(),
   },
-  {
-    code: '760198',
-    title: 'Tesouro IPCA+ com Juros Semestrais 2035',
-    vna: 3128.451893,
-    date: todayStr(),
-  },
-  { code: '760197', title: 'Tesouro IPCA+ 2029', vna: 2856.732451, date: todayStr() },
-  { code: '760196', title: 'Tesouro IPCA+ 2035', vna: 3012.183567, date: todayStr() },
 ]
 
-const TITLE_CODE_MAP: Record<string, string> = {
-  '2045': '760199',
-  '2035': '760198',
-  '2029': '760197',
-}
-
 export function findVnaForTitle(entries: VnaEntry[], title: string): number | null {
-  const exact = entries.find((e) => e.title === title && e.vna > 0)
-  if (exact) return exact.vna
+  const targetEntry = entries.find((e) => e.title.includes(TARGET_MATURITY_DATE) && e.vna > 0)
+  if (targetEntry) return targetEntry.vna
 
-  const partial = entries.find((e) => title.includes(e.title) || e.title.includes(title))
-  if (partial && partial.vna > 0) return partial.vna
-
-  for (const [year, code] of Object.entries(TITLE_CODE_MAP)) {
-    if (title.includes(year)) {
-      const byCode = entries.find((e) => e.code === code && e.vna > 0)
-      if (byCode) return byCode.vna
-    }
+  if (title.includes('2026')) {
+    const byMaturity = entries.find((e) => e.title.includes('2026') && e.vna > 0)
+    if (byMaturity) return byMaturity.vna
   }
 
-  if (title.includes('IPCA+')) {
-    const target = entries.find((e) => e.code === TARGET_SELIC_CODE && e.vna > 0)
-    if (target) return target.vna
+  if (title.includes('IPCA+') || title.includes('NTN-B')) {
+    const fallback = entries.find((e) => e.vna > 0)
+    if (fallback) return fallback.vna
   }
 
   return null
@@ -164,7 +146,7 @@ export async function fetchVnaData(onFallback?: () => void): Promise<VnaFetchRes
 
   const errorMessage =
     backendError ||
-    'Não foi possível obter dados do VNA da ANBIMA. Exibindo último valor conhecido.'
+    `Não foi possível obter dados do VNA (${TARGET_BOND_TYPE}) da ANBIMA. Exibindo último valor conhecido.`
   const errorType: VnaErrorType = backendErrorType || 'API_ERROR'
 
   console.warn('[vna-service] VNA fetch fallback:', {

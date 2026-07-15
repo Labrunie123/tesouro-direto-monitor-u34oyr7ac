@@ -2,7 +2,14 @@ import { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase/client'
 import type { VnaEntry, VnaFetchResult, VnaErrorType } from '@/lib/vna-service'
 
-const RATE_LIMIT_MAP: Record<string, VnaErrorType> = {
+const TARGET_BOND_TYPE = 'NTN-B 2026-07-15'
+const TARGET_MATURITY_DATE = '2026-07-15'
+const TARGET_SELIC_CODE = '760199'
+const FETCH_CACHE_KEY = '@tesouro-vision:vna-fetch-cache'
+const FETCH_DATE_KEY = '@tesouro-vision:vna-fetch-date'
+const FETCH_SYNC_KEY = '@tesouro-vision:vna-fetch-sync'
+
+const ERROR_TYPE_MAP: Record<string, VnaErrorType> = {
   RATE_LIMIT_ERROR: 'API_ERROR',
   EMPTY_RESPONSE_ERROR: 'EMPTY_RESPONSE_ERROR',
   DATABASE_ERROR: 'DATABASE_ERROR',
@@ -14,11 +21,6 @@ const RATE_LIMIT_MAP: Record<string, VnaErrorType> = {
   API_ERROR: 'API_ERROR',
   UNKNOWN_ERROR: 'UNKNOWN_ERROR',
 }
-
-const TARGET_SELIC_CODE = '760199'
-const FETCH_CACHE_KEY = '@tesouro-vision:vna-fetch-cache'
-const FETCH_DATE_KEY = '@tesouro-vision:vna-fetch-date'
-const FETCH_SYNC_KEY = '@tesouro-vision:vna-fetch-sync'
 
 export interface VnaHistoryRow {
   id: string
@@ -39,9 +41,10 @@ function getMostRecentBusinessDay(): string {
 }
 
 function mapRowToVnaEntry(row: VnaHistoryRow): VnaEntry {
+  const isTargetBond = row.bond_type === TARGET_BOND_TYPE
   return {
     code: TARGET_SELIC_CODE,
-    title: row.bond_type === 'NTN-B' ? 'Tesouro IPCA+ com Juros Semestrais 2045' : row.bond_type,
+    title: isTargetBond ? `NTN-B ${TARGET_MATURITY_DATE}` : row.bond_type,
     vna: Number(row.vna_value),
     date: row.reference_date,
   }
@@ -93,6 +96,7 @@ export async function fetchVnaHistory(): Promise<VnaHistoryRow[]> {
   const { data, error } = await supabase
     .from('vna_history')
     .select('*')
+    .eq('bond_type', TARGET_BOND_TYPE)
     .order('reference_date', { ascending: true })
     .limit(90)
 
@@ -109,6 +113,7 @@ export async function fetchVnaFromSupabase(): Promise<VnaFetchResult> {
     const { data, error } = await supabase
       .from('vna_history')
       .select('*')
+      .eq('bond_type', TARGET_BOND_TYPE)
       .order('reference_date', { ascending: false })
       .limit(10)
 
@@ -144,7 +149,7 @@ export async function fetchVnaFromSupabase(): Promise<VnaFetchResult> {
       const status = error.context.status
       const errMsg = errorBody?.error || `Error ${status}: Edge function failed`
       const rawType = (errorBody?.errorType as string) || 'API_ERROR'
-      lastErrorType = (RATE_LIMIT_MAP[rawType] || 'API_ERROR') as VnaErrorType
+      lastErrorType = (ERROR_TYPE_MAP[rawType] || 'API_ERROR') as VnaErrorType
 
       const formattedMsg = `Error ${status}: ${errMsg}`
 
@@ -171,7 +176,7 @@ export async function fetchVnaFromSupabase(): Promise<VnaFetchResult> {
     if (!data?.success) {
       let errMsg = data?.error || 'Edge function returned failure'
       const rawType = (data?.errorType as string) || 'API_ERROR'
-      lastErrorType = (RATE_LIMIT_MAP[rawType] || 'API_ERROR') as VnaErrorType
+      lastErrorType = (ERROR_TYPE_MAP[rawType] || 'API_ERROR') as VnaErrorType
 
       throw new Error(errMsg)
     }

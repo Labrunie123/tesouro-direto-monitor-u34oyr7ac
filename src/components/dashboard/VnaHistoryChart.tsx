@@ -39,8 +39,8 @@ export function VnaHistoryChart() {
     <Card className="flex flex-col animate-fade-in-up" style={{ animationDelay: '700ms' }}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0">
         <div>
-          <CardTitle>Histórico do VNA</CardTitle>
-          <CardDescription>Evolução do Valor Nominal Atualizado</CardDescription>
+          <CardTitle>Histórico do VNA — NTN-B 15/07/2026</CardTitle>
+          <CardDescription>Evolução do Valor Nominal Atualizado — NTN-B 2026-07-15</CardDescription>
         </div>
         <Button
           variant="ghost"
