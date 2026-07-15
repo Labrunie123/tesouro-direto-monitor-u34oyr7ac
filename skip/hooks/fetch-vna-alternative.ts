@@ -61,7 +61,7 @@ export default async function handler(_req: Request): Promise<Response> {
         Accept: 'text/html,application/xhtml+xml',
         'User-Agent': 'Mozilla/5.0 (compatible; TesouroMonitor/1.0)',
       },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(10000),
     })
 
     if (!response.ok) {

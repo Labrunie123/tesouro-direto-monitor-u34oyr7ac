@@ -133,7 +133,7 @@ async function fetchFromHook(): Promise<HookResponse> {
 
 async function fetchFromAlternativeHook(): Promise<HookResponse> {
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 15000)
+  const timeout = setTimeout(() => controller.abort(), 10000)
 
   try {
     const response = await fetch(ALTERNATIVE_HOOK_URL, {
@@ -355,6 +355,45 @@ export function getLastError(): { message: string; type: string; timestamp: stri
 export function clearLastError(): void {
   try {
     localStorage.removeItem(FETCH_ERROR_KEY)
+  } catch {
+    // ignore
+  }
+}
+
+const MANUAL_VNA_KEY = '@tesouro-vision:vna-manual'
+const MANUAL_VNA_DATE_KEY = '@tesouro-vision:vna-manual-date'
+
+export interface ManualVnaData {
+  vna: number
+  date: string
+}
+
+export function saveManualVna(vna: number): void {
+  try {
+    localStorage.setItem(MANUAL_VNA_KEY, String(vna))
+    localStorage.setItem(MANUAL_VNA_DATE_KEY, new Date().toISOString())
+  } catch {
+    // ignore
+  }
+}
+
+export function getManualVna(): ManualVnaData | null {
+  try {
+    const raw = localStorage.getItem(MANUAL_VNA_KEY)
+    if (!raw) return null
+    const vna = parseFloat(raw)
+    if (isNaN(vna) || vna <= 0) return null
+    const date = localStorage.getItem(MANUAL_VNA_DATE_KEY) || new Date().toISOString()
+    return { vna, date }
+  } catch {
+    return null
+  }
+}
+
+export function clearManualVna(): void {
+  try {
+    localStorage.removeItem(MANUAL_VNA_KEY)
+    localStorage.removeItem(MANUAL_VNA_DATE_KEY)
   } catch {
     // ignore
   }
