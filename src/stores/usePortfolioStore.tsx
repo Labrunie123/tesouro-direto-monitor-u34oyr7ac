@@ -112,6 +112,8 @@ interface PortfolioState {
   vnaErrorType: VnaErrorType | null
   vnaLastSync: string | null
   vnaErrorMessage: string | null
+  vnaSource: string | null
+  vnaFallbackLoading: boolean
   fetchVna: () => Promise<void>
 }
 
@@ -381,6 +383,8 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     }
   })
 
+  const [vnaSource, setVnaSource] = useState<string | null>(null)
+  const [vnaFallbackLoading, setVnaFallbackLoading] = useState(false)
   const [vnaStatus, setVnaStatus] = useState<VnaFetchStatus>('fresh')
   const [vnaErrorType, setVnaErrorType] = useState<VnaErrorType | null>(null)
   const errorToastShownRef = useRef(false)
@@ -554,8 +558,11 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
 
   const fetchVna = useCallback(async () => {
     setVnaLoading(true)
+    setVnaFallbackLoading(false)
     try {
-      const result: VnaFetchResult = await fetchVnaData()
+      const result: VnaFetchResult = await fetchVnaData(() => {
+        setVnaFallbackLoading(true)
+      })
       const isFresh = result.status === 'fresh'
 
       if (isFresh) {
@@ -566,6 +573,7 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
         setVnaErrorType(null)
         setVnaLastSync(result.fetchedAt)
         setVnaErrorMessage(null)
+        setVnaSource(result.source || null)
         clearLastError()
         errorToastShownRef.current = false
       } else {
@@ -606,6 +614,7 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
       }
     } finally {
       setVnaLoading(false)
+      setVnaFallbackLoading(false)
     }
   }, [])
 
@@ -808,6 +817,8 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
         vnaStatus,
         vnaErrorType,
         vnaErrorMessage,
+        vnaSource,
+        vnaFallbackLoading,
         vnaLastSync,
         fetchVna,
       },

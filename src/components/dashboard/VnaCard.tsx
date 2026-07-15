@@ -18,6 +18,8 @@ export function VnaCard() {
     vnaError,
     vnaErrorType,
     vnaLastSync,
+    vnaSource,
+    vnaFallbackLoading,
     fetchVna,
   } = usePortfolioStore()
 
@@ -63,7 +65,14 @@ export function VnaCard() {
           <CardTitle className="text-sm font-medium">
             {vnaDate ? `VNA (Ref: ${formatDate(vnaDate)})` : 'VNA do dia'}
           </CardTitle>
-          {vnaLoading ? (
+          {vnaFallbackLoading ? (
+            <Badge
+              variant="outline"
+              className="text-[10px] py-0 px-1.5 text-amber-600 border-amber-500/50 bg-amber-500/10"
+            >
+              Buscando fonte alternativa...
+            </Badge>
+          ) : vnaLoading ? (
             <Badge
               variant="outline"
               className="text-[10px] py-0 px-1.5 text-blue-600 border-blue-500/50 bg-blue-500/10"
@@ -95,7 +104,12 @@ export function VnaCard() {
           aria-label="Atualizar VNA"
         >
           {vnaLoading ? (
-            <Loader2 className="h-4 w-4 text-muted-foreground animate-spin" />
+            <Loader2
+              className={cn(
+                'h-4 w-4 animate-spin',
+                vnaFallbackLoading ? 'text-amber-500' : 'text-muted-foreground',
+              )}
+            />
           ) : (
             <RefreshCw className="h-4 w-4 text-muted-foreground transition-colors hover:text-primary" />
           )}
@@ -148,7 +162,7 @@ export function VnaCard() {
                 {vnaDate
                   ? isStale
                     ? `Valor de referência: ${formatDate(vnaDate)} (ainda não publicado hoje)`
-                    : `Atualizado em ${formatDate(vnaDate)} · B3 Tesouro Direto · Selic 760199`
+                    : `Atualizado em ${formatDate(vnaDate)} · ${vnaSource === 'BrasilIndicadores' ? 'Brasil Indicadores (fallback)' : 'B3 Tesouro Direto'} · Selic 760199`
                   : 'Referência B3 Tesouro Direto · Código Selic 760199'}
               </p>
             )}

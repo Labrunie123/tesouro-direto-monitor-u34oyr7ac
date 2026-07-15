@@ -21,6 +21,7 @@ export interface VnaFetchResult {
   fetchedAt: string | null
   error?: string
   errorType?: VnaErrorType
+  source?: string
 }
 
 const TARGET_SELIC_CODE = '760199'
@@ -30,6 +31,8 @@ const FETCH_SYNC_KEY = '@tesouro-vision:vna-fetch-sync'
 const FETCH_ERROR_KEY = '@tesouro-vision:vna-fetch-error'
 
 const HOOK_URL = import.meta.env.VITE_VNA_HOOK_URL || '/hooks/fetch-vna'
+const ALTERNATIVE_HOOK_URL =
+  import.meta.env.VITE_VNA_ALTERNATIVE_HOOK_URL || '/hooks/fetch-vna-alternative'
 
 const todayStr = () => new Date().toISOString().split('T')[0]
 
@@ -128,6 +131,36 @@ async function fetchFromHook(): Promise<HookResponse> {
   }
 }
 
+async function fetchFromAlternativeHook(): Promise<HookResponse> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 15000)
+
+  try {
+    const response = await fetch(ALTERNATIVE_HOOK_URL, {
+      signal: controller.signal,
+      headers: { Accept: 'application/json' },
+    })
+    clearTimeout(timeout)
+
+    const data: HookResponse = await response.json()
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || `Alternative hook returned status ${response.status}`)
+    }
+
+    return data
+  } catch (error) {
+    clearTimeout(timeout)
+    if (
+      error instanceof DOMException &&
+      (error.name === 'AbortError' || error.name === 'TimeoutError')
+    ) {
+      throw new Error('Tempo limite excedido ao conectar com fonte alternativa')
+    }
+    throw error
+  }
+}
+
 async function fetchWithRetry(maxRetries: number = 2): Promise<HookResponse> {
   let lastError: Error | null = null
 
@@ -203,7 +236,7 @@ function classifyError(error: unknown): VnaErrorType {
   return 'UNKNOWN_ERROR'
 }
 
-export async function fetchVnaData(): Promise<VnaFetchResult> {
+export async function fetchVnaData(onFallback?: () => void): Promise<VnaFetchResult> {
   const today = todayStr()
   const lastFetchDate = getCachedDate()
   const expectedDate = getMostRecentBusinessDay()
@@ -224,45 +257,87 @@ export async function fetchVnaData(): Promise<VnaFetchResult> {
       date: referenceDate,
       status: 'fresh',
       fetchedAt: result.fetchedAt || new Date().toISOString(),
+      source: 'B3-TesouroDireto',
     }
   } catch (e) {
-    const errorMessage = e instanceof Error ? e.message : String(e)
-    const errorType = classifyError(e)
+    const primaryError = e instanceof Error ? e.message : String(e)
+    const primaryErrorType = classifyError(e)
 
-    console.error('[vna-service] B3 API fetch failed, falling back to cached/default data:', {
-      message: errorMessage,
-      type: errorType,
-      timestamp: new Date().toISOString(),
-    })
-
-    localStorage.setItem(
-      FETCH_ERROR_KEY,
-      JSON.stringify({
-        message: errorMessage,
-        type: errorType,
+    console.warn(
+      '[vna-service] B3 API failed, attempting alternative source (Brasil Indicadores):',
+      {
+        message: primaryError,
+        type: primaryErrorType,
         timestamp: new Date().toISOString(),
-      }),
+      },
     )
 
-    const cached = getCachedEntries()
-    if (cached && cached.length > 0) {
+    onFallback?.()
+
+    try {
+      const altResult = await fetchFromAlternativeHook()
+      const targetEntry = altResult.entries.find(
+        (entry) => entry.code === TARGET_SELIC_CODE && entry.vna > 0,
+      )
+      const referenceDate = targetEntry?.date || altResult.date || today
+
+      localStorage.setItem(FETCH_CACHE_KEY, JSON.stringify(altResult.entries))
+      localStorage.setItem(FETCH_DATE_KEY, referenceDate)
+      localStorage.setItem(FETCH_SYNC_KEY, altResult.fetchedAt || new Date().toISOString())
+      localStorage.removeItem(FETCH_ERROR_KEY)
+
+      console.info('[vna-service] Alternative source (Brasil Indicadores) fetch succeeded:', {
+        vna: targetEntry?.vna,
+        date: referenceDate,
+        timestamp: new Date().toISOString(),
+      })
+
       return {
-        entries: cached,
-        date: lastFetchDate || expectedDate,
-        status: 'cached',
-        fetchedAt: getCachedSyncTime(),
+        entries: altResult.entries,
+        date: referenceDate,
+        status: 'fresh',
+        fetchedAt: altResult.fetchedAt || new Date().toISOString(),
+        source: 'BrasilIndicadores',
+      }
+    } catch (altError) {
+      const errorMessage = altError instanceof Error ? altError.message : String(altError)
+      const errorType = classifyError(altError)
+
+      console.error('[vna-service] Both primary and alternative sources failed:', {
+        primaryError: primaryError,
+        alternativeError: errorMessage,
+        timestamp: new Date().toISOString(),
+      })
+
+      localStorage.setItem(
+        FETCH_ERROR_KEY,
+        JSON.stringify({
+          message: errorMessage,
+          type: errorType,
+          timestamp: new Date().toISOString(),
+        }),
+      )
+
+      const cached = getCachedEntries()
+      if (cached && cached.length > 0) {
+        return {
+          entries: cached,
+          date: lastFetchDate || expectedDate,
+          status: 'cached',
+          fetchedAt: getCachedSyncTime(),
+          error: errorMessage,
+          errorType,
+        }
+      }
+
+      return {
+        entries: DEFAULT_VNA_DATA,
+        date: expectedDate,
+        status: 'default',
+        fetchedAt: null,
         error: errorMessage,
         errorType,
       }
-    }
-
-    return {
-      entries: DEFAULT_VNA_DATA,
-      date: expectedDate,
-      status: 'default',
-      fetchedAt: null,
-      error: errorMessage,
-      errorType,
     }
   }
 }
