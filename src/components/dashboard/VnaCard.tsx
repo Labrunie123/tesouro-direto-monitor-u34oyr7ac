@@ -1,5 +1,13 @@
 import { useMemo } from 'react'
-import { RefreshCw, AlertCircle, Clock, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react'
+import {
+  RefreshCw,
+  AlertCircle,
+  Clock,
+  AlertTriangle,
+  CheckCircle2,
+  Loader2,
+  WifiOff,
+} from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
@@ -52,7 +60,7 @@ export function VnaCard() {
     <Card
       className={cn(
         'hover:shadow-md transition-shadow animate-fade-in-up',
-        vnaError && 'border-amber-500/50',
+        vnaError && !vnaLoading && 'border-amber-500/50',
       )}
       style={{ animationDelay: '500ms' }}
     >
@@ -61,14 +69,21 @@ export function VnaCard() {
           <CardTitle className="text-sm font-medium">
             {vnaDate ? `VNA (Ref: ${formatDate(vnaDate)})` : 'VNA do dia'}
           </CardTitle>
-          {vnaError ? (
+          {vnaLoading ? (
+            <Badge
+              variant="outline"
+              className="text-[10px] py-0 px-1.5 text-blue-600 border-blue-500/50 bg-blue-500/10"
+            >
+              Atualizando...
+            </Badge>
+          ) : vnaError ? (
             <Badge
               variant="outline"
               className="text-[10px] py-0 px-1.5 text-amber-600 border-amber-500/50 bg-amber-500/10"
             >
-              Desatualizado
+              Sem Conexão
             </Badge>
-          ) : hasData && !vnaLoading ? (
+          ) : hasData ? (
             <Badge
               variant="outline"
               className="text-[10px] py-0 px-1.5 text-emerald-600 border-emerald-500/50 bg-emerald-500/10"
@@ -83,6 +98,7 @@ export function VnaCard() {
           className="h-8 w-8"
           onClick={fetchVna}
           disabled={vnaLoading}
+          aria-label="Atualizar VNA"
         >
           {vnaLoading ? (
             <Loader2 className="h-4 w-4 text-muted-foreground animate-spin" />
@@ -103,8 +119,8 @@ export function VnaCard() {
             {vnaError ? (
               <div className="mt-2 flex items-center gap-2">
                 <p className="text-xs text-amber-600 dark:text-amber-500 flex items-center gap-1 flex-1">
-                  <AlertTriangle className="h-3 w-3 shrink-0" />
-                  Dados Desatualizados — ref: {formatDate(vnaDate)}
+                  <WifiOff className="h-3 w-3 shrink-0" />
+                  Valor Referência (Sem Conexão) — ref: {formatDate(vnaDate)}
                 </p>
                 <Button
                   size="sm"
@@ -132,8 +148,8 @@ export function VnaCard() {
                 {vnaDate
                   ? isStale
                     ? `Valor de referência: ${formatDate(vnaDate)} (ainda não publicado hoje)`
-                    : `Atualizado em ${formatDate(vnaDate)} · ANBIMA · Selic 760199`
-                  : 'Referência ANBIMA · Código Selic 760199'}
+                    : `Atualizado em ${formatDate(vnaDate)} · B3 Tesouro Direto · Selic 760199`
+                  : 'Referência B3 Tesouro Direto · Código Selic 760199'}
               </p>
             )}
             {formattedSyncTime && (
@@ -148,7 +164,7 @@ export function VnaCard() {
             <div className="mt-2 flex items-center gap-2">
               <p className="text-xs text-muted-foreground flex items-center gap-1 flex-1">
                 <AlertCircle className="h-3 w-3 shrink-0" />
-                {vnaLoading ? 'Carregando...' : 'Fonte indisponível no momento'}
+                {vnaLoading ? 'Atualizando...' : 'API indisponível no momento'}
               </p>
               {!vnaLoading && (
                 <Button

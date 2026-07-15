@@ -7,17 +7,27 @@ export interface VnaEntry {
 
 export type VnaFetchStatus = 'fresh' | 'cached' | 'default'
 
+export type VnaErrorType =
+  | 'NETWORK_ERROR'
+  | 'TIMEOUT_ERROR'
+  | 'API_ERROR'
+  | 'PARSE_ERROR'
+  | 'UNKNOWN_ERROR'
+
 export interface VnaFetchResult {
   entries: VnaEntry[]
   date: string
   status: VnaFetchStatus
   fetchedAt: string | null
+  error?: string
+  errorType?: VnaErrorType
 }
 
 const TARGET_SELIC_CODE = '760199'
 const FETCH_CACHE_KEY = '@tesouro-vision:vna-fetch-cache'
 const FETCH_DATE_KEY = '@tesouro-vision:vna-fetch-date'
 const FETCH_SYNC_KEY = '@tesouro-vision:vna-fetch-sync'
+const FETCH_ERROR_KEY = '@tesouro-vision:vna-fetch-error'
 
 const HOOK_URL = import.meta.env.VITE_VNA_HOOK_URL || '/hooks/fetch-vna'
 
@@ -83,7 +93,9 @@ interface HookResponse {
   entries: VnaEntry[]
   date: string | null
   error?: string
+  errorType?: string
   fetchedAt?: string
+  source?: string
 }
 
 async function fetchFromHook(): Promise<HookResponse> {
@@ -118,7 +130,10 @@ async function fetchWithRetry(maxRetries: number = 2): Promise<HookResponse> {
       return await fetchFromHook()
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error))
-      console.warn(`VNA hook fetch attempt ${attempt + 1} failed:`, lastError.message)
+      console.warn(
+        `[vna-service] B3 API fetch attempt ${attempt + 1}/${maxRetries + 1} failed:`,
+        lastError.message,
+      )
       if (attempt < maxRetries) {
         await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)))
       }
@@ -146,6 +161,14 @@ function getCachedSyncTime(): string | null {
   }
 }
 
+function getCachedDate(): string | null {
+  try {
+    return localStorage.getItem(FETCH_DATE_KEY)
+  } catch {
+    return null
+  }
+}
+
 function isBusinessDay(date: Date): boolean {
   const day = date.getDay()
   return day !== 0 && day !== 6
@@ -162,9 +185,21 @@ function getMostRecentBusinessDay(): string {
   return friday.toISOString().split('T')[0]
 }
 
+function classifyError(error: unknown): VnaErrorType {
+  if (error instanceof TypeError) return 'NETWORK_ERROR'
+  if (error instanceof DOMException) {
+    if (error.name === 'TimeoutError' || error.name === 'AbortError') return 'TIMEOUT_ERROR'
+  }
+  if (error instanceof Error) {
+    if (error.message.includes('parse') || error.message.includes('JSON')) return 'PARSE_ERROR'
+    if (error.message.includes('status') || error.message.includes('format')) return 'API_ERROR'
+  }
+  return 'UNKNOWN_ERROR'
+}
+
 export async function fetchVnaData(): Promise<VnaFetchResult> {
   const today = todayStr()
-  const lastFetchDate = localStorage.getItem(FETCH_DATE_KEY)
+  const lastFetchDate = getCachedDate()
   const expectedDate = getMostRecentBusinessDay()
 
   try {
@@ -176,6 +211,7 @@ export async function fetchVnaData(): Promise<VnaFetchResult> {
     localStorage.setItem(FETCH_CACHE_KEY, JSON.stringify(result.entries))
     localStorage.setItem(FETCH_DATE_KEY, referenceDate)
     localStorage.setItem(FETCH_SYNC_KEY, result.fetchedAt || new Date().toISOString())
+    localStorage.removeItem(FETCH_ERROR_KEY)
 
     return {
       entries: result.entries,
@@ -184,7 +220,23 @@ export async function fetchVnaData(): Promise<VnaFetchResult> {
       fetchedAt: result.fetchedAt || new Date().toISOString(),
     }
   } catch (e) {
-    console.error('VNA backend hook fetch failed, falling back to cached/default data', e)
+    const errorMessage = e instanceof Error ? e.message : String(e)
+    const errorType = classifyError(e)
+
+    console.error('[vna-service] B3 API fetch failed, falling back to cached/default data:', {
+      message: errorMessage,
+      type: errorType,
+      timestamp: new Date().toISOString(),
+    })
+
+    localStorage.setItem(
+      FETCH_ERROR_KEY,
+      JSON.stringify({
+        message: errorMessage,
+        type: errorType,
+        timestamp: new Date().toISOString(),
+      }),
+    )
 
     const cached = getCachedEntries()
     if (cached && cached.length > 0) {
@@ -193,6 +245,8 @@ export async function fetchVnaData(): Promise<VnaFetchResult> {
         date: lastFetchDate || expectedDate,
         status: 'cached',
         fetchedAt: getCachedSyncTime(),
+        error: errorMessage,
+        errorType,
       }
     }
 
@@ -201,6 +255,26 @@ export async function fetchVnaData(): Promise<VnaFetchResult> {
       date: expectedDate,
       status: 'default',
       fetchedAt: null,
+      error: errorMessage,
+      errorType,
     }
+  }
+}
+
+export function getLastError(): { message: string; type: string; timestamp: string } | null {
+  try {
+    const raw = localStorage.getItem(FETCH_ERROR_KEY)
+    if (!raw) return null
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+export function clearLastError(): void {
+  try {
+    localStorage.removeItem(FETCH_ERROR_KEY)
+  } catch {
+    // ignore
   }
 }
