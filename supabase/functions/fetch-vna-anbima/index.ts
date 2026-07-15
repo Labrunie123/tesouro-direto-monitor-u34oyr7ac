@@ -56,7 +56,10 @@ async function getAnbimaToken(clientId: string, clientSecret: string): Promise<s
   if (!response.ok) {
     const text = await response.text().catch(() => '')
     console.error('[fetch-vna-anbima] Auth HTTP error:', response.status, text)
-    throw new AnbimaAuthError(`ANBIMA auth failed (${response.status}): ${text}`, response.status)
+    throw new AnbimaAuthError(
+      `ANBIMA auth failed (${response.status}): ${text}`,
+      response.status,
+    )
   }
 
   const data = await response.json()
