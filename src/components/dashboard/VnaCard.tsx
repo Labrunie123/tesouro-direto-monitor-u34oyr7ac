@@ -52,11 +52,14 @@ export function VnaCard() {
     if (vnaError && vnaError !== prevErrorRef.current && !vnaLoading) {
       const hasManual = getManualVna() !== null
       const errorPrefix = vnaErrorType ? `[${vnaErrorType}] ` : ''
+      const detailMsg = vnaError
+        ? `${errorPrefix}${vnaError}`
+        : `${errorPrefix}Não foi possível obter o VNA automaticamente.`
       toast({
         title: 'Erro ao buscar VNA',
         description: hasManual
-          ? `${errorPrefix}Não foi possível obter o VNA automaticamente. Usando valor manual salvo.`
-          : `${errorPrefix}${vnaError || 'Não foi possível obter o VNA automaticamente. Use a entrada manual para manter seus cálculos.'}`,
+          ? `${detailMsg} Usando valor manual salvo.`
+          : `${detailMsg} Use a entrada manual para manter seus cálculos.`,
         variant: hasManual ? 'default' : 'destructive',
       })
       prevErrorRef.current = vnaError

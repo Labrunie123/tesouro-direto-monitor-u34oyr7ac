@@ -3,13 +3,15 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 
 const ANBIMA_TOKEN_URL = 'https://api.anbima.com.br/oauth/access-token'
-const ANBIMA_VNA_URL = 'https://api.anbima.com.br/feed/precos-indices/v1/titulos-publicos/vna'
+const ANBIMA_VNA_URL =
+  'https://api-sandbox.anbima.com.br/feed/precos-indices/v1/titulos-publicos/vna'
 
 interface VnaEntry {
   code: string
   title: string
   vna: number
   date: string
+  bondType: string
 }
 
 class AnbimaAuthError extends Error {
@@ -46,7 +48,7 @@ async function getAnbimaToken(clientId: string, clientSecret: string): Promise<s
     const text = await response.text().catch(() => '')
     console.error('[fetch-vna-anbima] Auth failed:', response.status, text)
     throw new AnbimaAuthError(
-      `ANBIMA authentication unauthorized (${response.status}). Verify client_id and client_secret.`,
+      `ANBIMA authentication unauthorized (${response.status}). Verify client_id and client_secret. ANBIMA response: ${text}`,
       response.status,
     )
   }
@@ -79,13 +81,16 @@ function parseAnbimaVna(data: unknown): VnaEntry[] {
     const bondType = String(obj.tipo_titulo || obj.tipo || obj.bond_type || 'NTN-B')
     const vna = Number(obj.vna || obj.valor || 0)
     const refDate = String(obj.data_referencia || obj.data || obj.reference_date || '')
+    const code = String(obj.codigo_selic || obj.code || obj.codigo || '760199')
+    const title = String(obj.titulo || obj.title || obj.nome_titulo || bondType)
 
-    if (vna > 0) {
+    if (vna > 0 && refDate) {
       entries.push({
-        code: '760199',
-        title: bondType,
+        code,
+        title,
         vna,
         date: refDate.split('T')[0],
+        bondType,
       })
     }
   }
@@ -107,7 +112,7 @@ async function fetchVnaFromAnbima(token: string, clientId: string): Promise<VnaE
     const text = await response.text().catch(() => '')
     console.error('[fetch-vna-anbima] VNA API unauthorized:', response.status, text)
     throw new AnbimaApiError(
-      `ANBIMA VNA API unauthorized (${response.status}). Token may be invalid or expired.`,
+      `ANBIMA VNA API unauthorized (${response.status}). Token may be invalid or expired. ANBIMA response: ${text}`,
       response.status,
     )
   }
@@ -135,16 +140,19 @@ async function upsertVnaHistory(entries: VnaEntry[]): Promise<void> {
   const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   const supabase = createClient(supabaseUrl, supabaseKey)
 
-  const target = entries.find((e) => e.code === '760199') || entries[0]
+  const rows = entries
+    .filter((e) => e.vna > 0 && e.date)
+    .map((e) => ({
+      reference_date: e.date,
+      vna_value: e.vna,
+      bond_type: e.bondType || 'NTN-B',
+    }))
 
-  const { error } = await supabase.from('vna_history').upsert(
-    {
-      reference_date: target.date,
-      vna_value: target.vna,
-      bond_type: 'NTN-B',
-    },
-    { onConflict: 'reference_date,bond_type' },
-  )
+  if (rows.length === 0) return
+
+  const { error } = await supabase.from('vna_history').upsert(rows, {
+    onConflict: 'reference_date,bond_type',
+  })
 
   if (error) {
     console.error('[fetch-vna-anbima] Database upsert error:', error.message, error.details)

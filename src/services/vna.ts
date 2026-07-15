@@ -84,11 +84,10 @@ export async function fetchVnaFromSupabase(): Promise<VnaFetchResult> {
 
     if (error) {
       console.warn('[vna-service] Edge function returned error:', error)
-      throw new Error(error.message || 'Edge function invocation failed')
     }
 
     if (!data?.success) {
-      const errMsg = data?.error || 'Edge function returned failure'
+      const errMsg = data?.error || error?.message || 'Edge function returned failure'
       lastErrorType = (data?.errorType as VnaErrorType) || 'API_ERROR'
       throw new Error(errMsg)
     }
