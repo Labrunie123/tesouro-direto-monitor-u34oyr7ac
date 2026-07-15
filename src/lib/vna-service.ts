@@ -118,6 +118,12 @@ async function fetchFromHook(): Promise<HookResponse> {
     return data
   } catch (error) {
     clearTimeout(timeout)
+    if (
+      error instanceof DOMException &&
+      (error.name === 'AbortError' || error.name === 'TimeoutError')
+    ) {
+      throw new Error('Tempo limite excedido ao conectar com a API da B3')
+    }
     throw error
   }
 }

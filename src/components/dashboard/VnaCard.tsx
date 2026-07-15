@@ -1,25 +1,25 @@
 import { useMemo } from 'react'
-import {
-  RefreshCw,
-  AlertCircle,
-  Clock,
-  AlertTriangle,
-  CheckCircle2,
-  Loader2,
-  WifiOff,
-} from 'lucide-react'
+import { RefreshCw, AlertCircle, Clock, CheckCircle2, Loader2, CloudOff } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import usePortfolioStore from '@/stores/usePortfolioStore'
-import { formatVna, formatDate } from '@/lib/formatters'
+import { formatCurrency, formatDate, formatDateTime } from '@/lib/formatters'
 import { findVnaForTitle } from '@/lib/vna-service'
 import { cn } from '@/lib/utils'
 
 export function VnaCard() {
-  const { investments, vnaData, vnaDate, vnaLoading, vnaError, vnaLastSync, fetchVna } =
-    usePortfolioStore()
+  const {
+    investments,
+    vnaData,
+    vnaDate,
+    vnaLoading,
+    vnaError,
+    vnaErrorType,
+    vnaLastSync,
+    fetchVna,
+  } = usePortfolioStore()
 
   const vnaValue = useMemo(() => {
     const ipcaInv = investments.find((inv) => inv.type === 'IPCA+')
@@ -39,18 +39,12 @@ export function VnaCard() {
 
   const hasData = vnaValue > 0
   const showSkeleton = vnaLoading && !hasData
+  const isTimeout = vnaErrorType === 'TIMEOUT_ERROR'
 
   const formattedSyncTime = useMemo(() => {
     if (!vnaLastSync) return null
     try {
-      const d = new Date(vnaLastSync)
-      return new Intl.DateTimeFormat('pt-BR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      }).format(d)
+      return formatDateTime(vnaLastSync)
     } catch {
       return null
     }
@@ -74,14 +68,14 @@ export function VnaCard() {
               variant="outline"
               className="text-[10px] py-0 px-1.5 text-blue-600 border-blue-500/50 bg-blue-500/10"
             >
-              Atualizando...
+              Sincronizando...
             </Badge>
           ) : vnaError ? (
             <Badge
               variant="outline"
-              className="text-[10px] py-0 px-1.5 text-amber-600 border-amber-500/50 bg-amber-500/10"
+              className="text-[10px] py-0 px-1.5 text-red-600 border-red-500/50 bg-red-500/10"
             >
-              Sem Conexão
+              Erro de Conexão
             </Badge>
           ) : hasData ? (
             <Badge
@@ -115,12 +109,18 @@ export function VnaCard() {
           </div>
         ) : hasData ? (
           <>
-            <div className="text-2xl font-bold tabular-nums">{formatVna(vnaValue)}</div>
+            <div className="text-2xl font-bold tabular-nums">{formatCurrency(vnaValue)}</div>
             {vnaError ? (
-              <div className="mt-2 flex items-center gap-2">
-                <p className="text-xs text-amber-600 dark:text-amber-500 flex items-center gap-1 flex-1">
-                  <WifiOff className="h-3 w-3 shrink-0" />
-                  Valor Referência (Sem Conexão) — ref: {formatDate(vnaDate)}
+              <div className="mt-2 space-y-1">
+                <p className="text-xs text-amber-600 dark:text-amber-500 flex items-center gap-1">
+                  <CloudOff className="h-3 w-3 shrink-0" />
+                  <span className="font-medium">Dados Offline</span>
+                  <span className="text-muted-foreground">— ref: {formatDate(vnaDate)}</span>
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  {isTimeout
+                    ? 'Tempo limite excedido ao conectar com a B3.'
+                    : 'API da B3 indisponível. Exibindo último valor conhecido.'}
                 </p>
                 <Button
                   size="sm"
@@ -154,7 +154,7 @@ export function VnaCard() {
             )}
             {formattedSyncTime && (
               <p className="text-[10px] text-muted-foreground/70 mt-1">
-                Última sincronização: {formattedSyncTime}
+                Última atualização: {formattedSyncTime}
               </p>
             )}
           </>
@@ -164,7 +164,11 @@ export function VnaCard() {
             <div className="mt-2 flex items-center gap-2">
               <p className="text-xs text-muted-foreground flex items-center gap-1 flex-1">
                 <AlertCircle className="h-3 w-3 shrink-0" />
-                {vnaLoading ? 'Atualizando...' : 'API indisponível no momento'}
+                {vnaLoading
+                  ? 'Sincronizando...'
+                  : isTimeout
+                    ? 'Tempo limite excedido'
+                    : 'API indisponível no momento'}
               </p>
               {!vnaLoading && (
                 <Button

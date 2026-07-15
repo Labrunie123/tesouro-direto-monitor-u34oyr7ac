@@ -1,16 +1,21 @@
 import {
   VnaEntry,
+  VnaFetchStatus,
+  VnaErrorType,
   fetchVnaData,
   findVnaForTitle,
   DEFAULT_VNA_DATA,
   VnaFetchResult,
+  getLastError,
+  clearLastError,
 } from '@/lib/vna-service'
-import { getLastError, clearLastError } from '@/lib/vna-service'
+import { toast } from '@/hooks/use-toast'
 import React, {
   createContext,
   useContext,
   useState,
   useEffect,
+  useRef,
   ReactNode,
   useMemo,
   useCallback,
@@ -103,6 +108,8 @@ interface PortfolioState {
   vnaDate: string
   vnaLoading: boolean
   vnaError: boolean
+  vnaStatus: VnaFetchStatus
+  vnaErrorType: VnaErrorType | null
   vnaLastSync: string | null
   vnaErrorMessage: string | null
   fetchVna: () => Promise<void>
@@ -374,6 +381,10 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     }
   })
 
+  const [vnaStatus, setVnaStatus] = useState<VnaFetchStatus>('fresh')
+  const [vnaErrorType, setVnaErrorType] = useState<VnaErrorType | null>(null)
+  const errorToastShownRef = useRef(false)
+
   useEffect(() => {
     try {
       localStorage.setItem('@tesouro-vision:investments-all', JSON.stringify(allInvestments))
@@ -545,21 +556,54 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
     setVnaLoading(true)
     try {
       const result: VnaFetchResult = await fetchVnaData()
-      setVnaData(result.entries)
-      setVnaDate(result.date)
-      setVnaError(result.status !== 'fresh')
-      setVnaLastSync(result.fetchedAt)
-      if (result.error) {
-        setVnaErrorMessage(result.error)
-        console.error('[PortfolioStore] VNA fetch error:', result.error)
-      } else {
+      const isFresh = result.status === 'fresh'
+
+      if (isFresh) {
+        setVnaData(result.entries)
+        setVnaDate(result.date)
+        setVnaError(false)
+        setVnaStatus('fresh')
+        setVnaErrorType(null)
+        setVnaLastSync(result.fetchedAt)
         setVnaErrorMessage(null)
         clearLastError()
+        errorToastShownRef.current = false
+      } else {
+        setVnaError(true)
+        setVnaStatus(result.status)
+        setVnaErrorType(result.errorType || null)
+        setVnaErrorMessage(result.error || null)
+
+        if (result.fetchedAt) {
+          setVnaLastSync(result.fetchedAt)
+        }
+
+        if (!errorToastShownRef.current) {
+          const isTimeout = result.errorType === 'TIMEOUT_ERROR'
+          toast({
+            variant: 'destructive',
+            title: isTimeout ? 'Tempo limite excedido' : 'Serviço temporariamente indisponível',
+            description: isTimeout
+              ? 'A API da B3 não respondeu em tempo hábil. Exibindo o último valor conhecido.'
+              : 'Não foi possível conectar à API da B3. Exibindo o último valor conhecido.',
+          })
+          errorToastShownRef.current = true
+        }
       }
     } catch (e) {
       console.error('[PortfolioStore] Failed to fetch VNA data', e)
       setVnaError(true)
+      setVnaStatus('default')
       setVnaErrorMessage(e instanceof Error ? e.message : String(e))
+
+      if (!errorToastShownRef.current) {
+        toast({
+          variant: 'destructive',
+          title: 'Serviço temporariamente indisponível',
+          description: 'Não foi possível obter os dados da B3. Exibindo o último valor conhecido.',
+        })
+        errorToastShownRef.current = true
+      }
     } finally {
       setVnaLoading(false)
     }
@@ -761,6 +805,8 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
         vnaDate,
         vnaLoading,
         vnaError,
+        vnaStatus,
+        vnaErrorType,
         vnaErrorMessage,
         vnaLastSync,
         fetchVna,
