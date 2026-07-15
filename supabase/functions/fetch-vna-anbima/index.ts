@@ -12,6 +12,24 @@ interface VnaEntry {
   date: string
 }
 
+class AnbimaAuthError extends Error {
+  status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'AnbimaAuthError'
+    this.status = status
+  }
+}
+
+class AnbimaApiError extends Error {
+  status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'AnbimaApiError'
+    this.status = status
+  }
+}
+
 async function getAnbimaToken(clientId: string, clientSecret: string): Promise<string> {
   const credentials = btoa(`${clientId}:${clientSecret}`)
   const response = await fetch(ANBIMA_TOKEN_URL, {
@@ -25,19 +43,24 @@ async function getAnbimaToken(clientId: string, clientSecret: string): Promise<s
   })
 
   if (response.status === 401 || response.status === 403) {
-    throw new Error(
+    const text = await response.text().catch(() => '')
+    console.error('[fetch-vna-anbima] Auth failed:', response.status, text)
+    throw new AnbimaAuthError(
       `ANBIMA authentication unauthorized (${response.status}). Verify client_id and client_secret.`,
+      response.status,
     )
   }
 
   if (!response.ok) {
-    const text = await response.text()
-    throw new Error(`ANBIMA auth failed (${response.status}): ${text}`)
+    const text = await response.text().catch(() => '')
+    console.error('[fetch-vna-anbima] Auth HTTP error:', response.status, text)
+    throw new AnbimaAuthError(`ANBIMA auth failed (${response.status}): ${text}`, response.status)
   }
 
   const data = await response.json()
   if (!data.access_token) {
-    throw new Error('ANBIMA auth: no access_token in response')
+    console.error('[fetch-vna-anbima] Auth response missing access_token:', JSON.stringify(data))
+    throw new AnbimaAuthError('ANBIMA auth: no access_token in response', 502)
   }
   return data.access_token as string
 }
@@ -71,6 +94,7 @@ function parseAnbimaVna(data: unknown): VnaEntry[] {
 
 async function fetchVnaFromAnbima(token: string, clientId: string): Promise<VnaEntry[]> {
   const response = await fetch(ANBIMA_VNA_URL, {
+    method: 'GET',
     headers: {
       client_id: clientId,
       access_token: token,
@@ -80,20 +104,28 @@ async function fetchVnaFromAnbima(token: string, clientId: string): Promise<VnaE
   })
 
   if (response.status === 401 || response.status === 403) {
-    throw new Error(
+    const text = await response.text().catch(() => '')
+    console.error('[fetch-vna-anbima] VNA API unauthorized:', response.status, text)
+    throw new AnbimaApiError(
       `ANBIMA VNA API unauthorized (${response.status}). Token may be invalid or expired.`,
+      response.status,
     )
   }
 
   if (!response.ok) {
-    const text = await response.text()
-    throw new Error(`ANBIMA VNA API failed (${response.status}): ${text}`)
+    const text = await response.text().catch(() => '')
+    console.error('[fetch-vna-anbima] VNA API HTTP error:', response.status, text)
+    throw new AnbimaApiError(`ANBIMA VNA API failed (${response.status}): ${text}`, response.status)
   }
 
   const data = await response.json()
   const entries = parseAnbimaVna(data)
   if (entries.length === 0) {
-    throw new Error('No VNA entries returned from ANBIMA')
+    console.error(
+      '[fetch-vna-anbima] No VNA entries parsed from response:',
+      JSON.stringify(data).slice(0, 500),
+    )
+    throw new AnbimaApiError('No VNA entries returned from ANBIMA', 502)
   }
   return entries
 }
@@ -115,8 +147,15 @@ async function upsertVnaHistory(entries: VnaEntry[]): Promise<void> {
   )
 
   if (error) {
-    console.error('[fetch-vna-anbima] Database upsert error:', error.message)
+    console.error('[fetch-vna-anbima] Database upsert error:', error.message, error.details)
   }
+}
+
+function jsonResponse(body: Record<string, unknown>, status: number): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json', ...corsHeaders },
+  })
 }
 
 Deno.serve(async (req: Request) => {
@@ -129,19 +168,18 @@ Deno.serve(async (req: Request) => {
     const clientSecret = Deno.env.get('ANBIMA_Client_Secret')
 
     if (!clientId || !clientSecret) {
-      return new Response(
-        JSON.stringify({
+      console.error('[fetch-vna-anbima] Missing ANBIMA credentials in secrets')
+      return jsonResponse(
+        {
           success: false,
-          error: 'ANBIMA credentials not configured',
+          error:
+            'ANBIMA credentials not configured. Set ANBIMA_Client_ID and ANBIMA_Client_Secret in Supabase secrets.',
           entries: [],
           date: null,
           fetchedAt: new Date().toISOString(),
           source: 'ANBIMA',
-        }),
-        {
-          status: 500,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders },
         },
+        500,
       )
     }
 
@@ -151,35 +189,61 @@ Deno.serve(async (req: Request) => {
 
     const target = entries.find((e) => e.code === '760199') || entries[0]
 
-    return new Response(
-      JSON.stringify({
+    return jsonResponse(
+      {
         success: true,
         entries,
         date: target.date,
         fetchedAt: new Date().toISOString(),
         source: 'ANBIMA',
-      }),
-      {
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
       },
+      200,
     )
   } catch (error) {
     console.error('[fetch-vna-anbima] Error:', error)
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
 
-    return new Response(
-      JSON.stringify({
+    if (error instanceof AnbimaAuthError) {
+      return jsonResponse(
+        {
+          success: false,
+          error: error.message,
+          errorType: 'AUTH_ERROR',
+          entries: [],
+          date: null,
+          fetchedAt: new Date().toISOString(),
+          source: 'ANBIMA',
+        },
+        401,
+      )
+    }
+
+    if (error instanceof AnbimaApiError) {
+      return jsonResponse(
+        {
+          success: false,
+          error: error.message,
+          errorType: 'API_ERROR',
+          entries: [],
+          date: null,
+          fetchedAt: new Date().toISOString(),
+          source: 'ANBIMA',
+        },
+        error.status === 401 || error.status === 403 ? 401 : 502,
+      )
+    }
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    return jsonResponse(
+      {
         success: false,
         error: errorMessage,
+        errorType: 'UNKNOWN_ERROR',
         entries: [],
         date: null,
         fetchedAt: new Date().toISOString(),
         source: 'ANBIMA',
-      }),
-      {
-        status: 502,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
       },
+      502,
     )
   }
 })

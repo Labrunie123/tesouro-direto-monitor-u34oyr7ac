@@ -84,8 +84,16 @@ export async function fetchVnaFromSupabase(): Promise<VnaFetchResult | null> {
   try {
     const { data, error } = await supabase.functions.invoke('fetch-vna-anbima')
 
-    if (error) throw error
-    if (!data?.success) throw new Error(data?.error || 'Edge function failed')
+    if (error) {
+      console.warn('[vna-service] Edge function returned error:', error)
+      throw new Error(error.message || 'Edge function invocation failed')
+    }
+
+    if (!data?.success) {
+      const errMsg = data?.error || 'Edge function returned failure'
+      console.warn('[vna-service] Edge function failure:', errMsg)
+      throw new Error(errMsg)
+    }
 
     const entries: VnaEntry[] = data.entries || []
     if (entries.length === 0) throw new Error('No VNA entries returned')
@@ -102,7 +110,8 @@ export async function fetchVnaFromSupabase(): Promise<VnaFetchResult | null> {
       source: data.source || 'ANBIMA',
     }
   } catch (e) {
-    console.warn('[vna-service] Edge function invocation failed:', e)
+    const errMsg = e instanceof Error ? e.message : String(e)
+    console.warn('[vna-service] Edge function invocation failed:', errMsg)
 
     if (existingRows && existingRows.length > 0) {
       const entries = existingRows.map(mapRowToVnaEntry)
@@ -112,7 +121,7 @@ export async function fetchVnaFromSupabase(): Promise<VnaFetchResult | null> {
         status: 'cached',
         fetchedAt: existingRows[0].created_at,
         source: 'Supabase-Cached',
-        error: e instanceof Error ? e.message : String(e),
+        error: errMsg,
       }
     }
 
