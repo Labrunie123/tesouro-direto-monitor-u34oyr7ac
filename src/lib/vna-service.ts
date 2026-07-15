@@ -127,13 +127,16 @@ function classifyError(error: unknown): VnaErrorType {
   }
   if (error instanceof SyntaxError) return 'PARSE_ERROR'
   if (error instanceof Error) {
+    const msg = error.message.toLowerCase()
+    if (msg.includes('parse') || msg.includes('json') || msg.includes('html')) return 'PARSE_ERROR'
     if (
-      error.message.includes('parse') ||
-      error.message.includes('JSON') ||
-      error.message.includes('HTML')
+      msg.includes('unauthorized') ||
+      msg.includes('auth') ||
+      msg.includes('401') ||
+      msg.includes('403')
     )
-      return 'PARSE_ERROR'
-    if (error.message.includes('status') || error.message.includes('format')) return 'API_ERROR'
+      return 'AUTH_ERROR'
+    if (msg.includes('status') || msg.includes('format') || msg.includes('api')) return 'API_ERROR'
   }
   return 'UNKNOWN_ERROR'
 }

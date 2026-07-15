@@ -87,8 +87,20 @@ export async function fetchVnaFromSupabase(): Promise<VnaFetchResult> {
     }
 
     if (!data?.success) {
-      const errMsg = data?.error || error?.message || 'Edge function returned failure'
+      let errMsg = data?.error || error?.message || 'Edge function returned failure'
       lastErrorType = (data?.errorType as VnaErrorType) || 'API_ERROR'
+
+      if (data?.anbimaStatus) {
+        errMsg = `[ANBIMA ${data.anbimaStatus}] ${errMsg}`
+      }
+
+      console.error('[vna-service] Edge function error detail:', {
+        message: errMsg,
+        type: lastErrorType,
+        anbimaStatus: data?.anbimaStatus,
+        source: data?.source,
+      })
+
       throw new Error(errMsg)
     }
 

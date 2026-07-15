@@ -56,10 +56,7 @@ async function getAnbimaToken(clientId: string, clientSecret: string): Promise<s
   if (!response.ok) {
     const text = await response.text().catch(() => '')
     console.error('[fetch-vna-anbima] Auth HTTP error:', response.status, text)
-    throw new AnbimaAuthError(
-      `ANBIMA auth failed (${response.status}): ${text}`,
-      response.status,
-    )
+    throw new AnbimaAuthError(`ANBIMA auth failed (${response.status}): ${text}`, response.status)
   }
 
   const data = await response.json()
@@ -175,8 +172,9 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const clientId = Deno.env.get('ANBIMA_Client_ID')
-    const clientSecret = Deno.env.get('ANBIMA_Client_Secret')
+    const clientId = Deno.env.get('ANBIMA_CLIENT_ID') || Deno.env.get('ANBIMA_Client_ID')
+    const clientSecret =
+      Deno.env.get('ANBIMA_CLIENT_SECRET') || Deno.env.get('ANBIMA_Client_Secret')
 
     if (!clientId || !clientSecret) {
       console.error('[fetch-vna-anbima] Missing ANBIMA credentials in secrets')
