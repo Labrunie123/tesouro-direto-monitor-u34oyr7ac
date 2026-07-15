@@ -30,6 +30,9 @@ const FETCH_DATE_KEY = '@tesouro-vision:vna-fetch-date'
 const FETCH_SYNC_KEY = '@tesouro-vision:vna-fetch-sync'
 const FETCH_ERROR_KEY = '@tesouro-vision:vna-fetch-error'
 
+import { supabase } from '@/lib/supabase/client'
+import { fetchVnaFromSupabase } from '@/services/vna'
+
 const HOOK_URL = import.meta.env.VITE_VNA_HOOK_URL || '/hooks/fetch-vna'
 const ALTERNATIVE_HOOK_URL =
   import.meta.env.VITE_VNA_ALTERNATIVE_HOOK_URL || '/hooks/fetch-vna-alternative'
@@ -275,6 +278,17 @@ export async function fetchVnaData(onFallback?: () => void): Promise<VnaFetchRes
   const lastFetchDate = getCachedDate()
   const expectedDate = getMostRecentBusinessDay()
 
+  // Primary source: Supabase (database + ANBIMA edge function)
+  try {
+    const supaResult = await fetchVnaFromSupabase()
+    if (supaResult) {
+      return supaResult
+    }
+  } catch (e) {
+    console.warn('[vna-service] Supabase VNA fetch failed, falling back to B3 hook:', e)
+  }
+
+  // Fallback: B3 hook with retry
   try {
     const result = await fetchWithRetry(2)
 
