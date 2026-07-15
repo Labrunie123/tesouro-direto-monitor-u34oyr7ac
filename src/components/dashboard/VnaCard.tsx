@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { RefreshCw, AlertCircle } from 'lucide-react'
+import { RefreshCw, AlertCircle, Clock } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import usePortfolioStore from '@/stores/usePortfolioStore'
@@ -59,11 +59,15 @@ export function VnaCard() {
                 isStale ? 'text-amber-600 dark:text-amber-500' : 'text-muted-foreground',
               )}
             >
-              {isStale && <AlertCircle className="h-3 w-3 shrink-0" />}
+              {isStale ? (
+                <Clock className="h-3 w-3 shrink-0" />
+              ) : (
+                <AlertCircle className="h-3 w-3 shrink-0 opacity-50" />
+              )}
               {vnaDate
                 ? isStale
-                  ? `Última atualização: ${formatDate(vnaDate)}`
-                  : `Atualizado em ${formatDate(vnaDate)}`
+                  ? `Valor de referência: ${formatDate(vnaDate)} (ainda não publicado hoje)`
+                  : `Atualizado em ${formatDate(vnaDate)} · ANBIMA · Selic 760199`
                 : 'Referência ANBIMA · Código Selic 760199'}
             </p>
           </>

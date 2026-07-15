@@ -16,25 +16,25 @@ export const DEFAULT_VNA_DATA: VnaEntry[] = [
   {
     code: '760199',
     title: 'Tesouro IPCA+ com Juros Semestrais 2045',
-    vna: 4743.21,
+    vna: 4743.207764,
     date: todayStr(),
   },
   {
     code: '760198',
     title: 'Tesouro IPCA+ com Juros Semestrais 2035',
-    vna: 3128.45,
+    vna: 3128.451893,
     date: todayStr(),
   },
   {
     code: '760197',
     title: 'Tesouro IPCA+ 2029',
-    vna: 2856.73,
+    vna: 2856.732451,
     date: todayStr(),
   },
   {
     code: '760196',
     title: 'Tesouro IPCA+ 2035',
-    vna: 3012.18,
+    vna: 3012.183567,
     date: todayStr(),
   },
 ]
@@ -69,7 +69,6 @@ export function findVnaForTitle(entries: VnaEntry[], title: string): number | nu
 
 function parseAnbimaJson(data: unknown): VnaEntry[] {
   const entries: VnaEntry[] = []
-  const date = todayStr()
 
   const records: any[] = Array.isArray(data)
     ? data
@@ -84,6 +83,14 @@ function parseAnbimaJson(data: unknown): VnaEntry[] {
   for (const record of records) {
     const code = record.codigoSelic || record.codigo_selic || record.code || record.codigo || ''
     const title = record.titulo || record.title || record.nome || record.name || ''
+    const dateRaw =
+      record.dataReferencia ||
+      record.data_referencia ||
+      record.data ||
+      record.date ||
+      record.dataAtualizacao ||
+      record.data_atualizacao
+    const entryDate = dateRaw ? String(dateRaw).split('T')[0] : todayStr()
     const vnaRaw =
       record.valorNominalAtualizado ||
       record.valor_nominal_atualizado ||
@@ -96,7 +103,7 @@ function parseAnbimaJson(data: unknown): VnaEntry[] {
         : Number(vnaRaw)
 
     if (code && vna > 0) {
-      entries.push({ code: String(code), title, vna, date })
+      entries.push({ code: String(code), title, vna, date: entryDate })
     }
   }
 
@@ -121,7 +128,12 @@ function parseAnbimaHtml(html: string): VnaEntry[] {
     }
   }
 
-  const codeRegex = /760199[\s\S]{0,500}?(\d{1,3}(?:\.\d{3})*,\d{2,})/gi
+  const dateMatch = html.match(
+    /data[_-]?(?:referencia|atualizacao|base)["\s:>]+(\d{4}-\d{2}-\d{2})/i,
+  )
+  const refDate = dateMatch ? dateMatch[1] : date
+
+  const codeRegex = /760199[\s\S]{0,500}?(\d{1,3}(?:\.\d{3})*(?:,\d{2,}))/gi
   let match: RegExpExecArray | null
   while ((match = codeRegex.exec(html)) !== null) {
     const vnaStr = match[1]
@@ -131,7 +143,7 @@ function parseAnbimaHtml(html: string): VnaEntry[] {
         code: TARGET_SELIC_CODE,
         title: 'Tesouro IPCA+ com Juros Semestrais 2045',
         vna,
-        date,
+        date: refDate,
       })
     }
   }
@@ -203,9 +215,11 @@ export async function fetchVnaData(): Promise<{
 
   try {
     const entries = await fetchVnaFromAnbima()
+    const targetEntry = entries.find((e) => e.code === TARGET_SELIC_CODE)
+    const referenceDate = targetEntry?.date || today
     localStorage.setItem(FETCH_CACHE_KEY, JSON.stringify(entries))
-    localStorage.setItem(FETCH_DATE_KEY, today)
-    return { entries, date: today }
+    localStorage.setItem(FETCH_DATE_KEY, referenceDate)
+    return { entries, date: referenceDate }
   } catch (e) {
     console.warn('ANBIMA VNA fetch failed, using cached/default data', e)
 

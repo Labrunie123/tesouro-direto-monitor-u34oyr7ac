@@ -503,6 +503,11 @@ export const PortfolioProvider = ({ children }: { children: ReactNode }) => {
       const result = await fetchVnaData()
       setVnaData(result.entries)
       setVnaDate(result.date)
+      try {
+        localStorage.setItem('@tesouro-vision:vna-date', result.date)
+      } catch {
+        /* intentionally ignored */
+      }
     } catch (e) {
       console.warn('Failed to fetch VNA data', e)
     } finally {
