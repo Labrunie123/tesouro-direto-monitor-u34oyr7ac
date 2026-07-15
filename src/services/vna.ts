@@ -2,14 +2,12 @@ import { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase/client'
 import type { VnaEntry, VnaFetchResult, VnaErrorType } from '@/lib/vna-service'
 
-const RATE_LIMIT_ERROR_TYPES: VnaErrorType[] = ['API_ERROR']
-
 const TARGET_SELIC_CODE = '760199'
 const FETCH_CACHE_KEY = '@tesouro-vision:vna-fetch-cache'
 const FETCH_DATE_KEY = '@tesouro-vision:vna-fetch-date'
 const FETCH_SYNC_KEY = '@tesouro-vision:vna-fetch-sync'
 
-interface VnaHistoryRow {
+export interface VnaHistoryRow {
   id: string
   reference_date: string
   vna_value: number
@@ -78,6 +76,17 @@ async function readErrorBody(
   }
 }
 
+export async function fetchVnaHistory(): Promise<VnaHistoryRow[]> {
+  const { data, error } = await supabase
+    .from('vna_history')
+    .select('*')
+    .order('reference_date', { ascending: true })
+    .limit(90)
+
+  if (error) throw error
+  return (data || []) as VnaHistoryRow[]
+}
+
 export async function fetchVnaFromSupabase(): Promise<VnaFetchResult> {
   const expectedDate = getMostRecentBusinessDay()
   let existingRows: VnaHistoryRow[] | null = null
@@ -126,12 +135,6 @@ export async function fetchVnaFromSupabase(): Promise<VnaFetchResult> {
 
       const formattedMsg = `Error ${status}: ${errMsg}`
 
-      console.error('[vna-service] Edge function HTTP error:', {
-        status,
-        message: errMsg,
-        type: lastErrorType,
-      })
-
       if (existingRows && existingRows.length > 0) {
         return buildCachedResult(existingRows, formattedMsg, lastErrorType)
       }
@@ -149,7 +152,6 @@ export async function fetchVnaFromSupabase(): Promise<VnaFetchResult> {
     if (error) {
       const errMsg = error.message || 'Edge function invocation failed'
       lastErrorType = 'NETWORK_ERROR'
-      console.warn('[vna-service] Edge function invocation error:', errMsg)
       throw new Error(errMsg)
     }
 
@@ -157,17 +159,6 @@ export async function fetchVnaFromSupabase(): Promise<VnaFetchResult> {
       let errMsg = data?.error || 'Edge function returned failure'
       const rawType = (data?.errorType as string) || 'API_ERROR'
       lastErrorType = (rawType === 'RATE_LIMIT_ERROR' ? 'API_ERROR' : rawType) as VnaErrorType
-
-      if (data?.anbimaStatus) {
-        errMsg = `Error ${data.anbimaStatus}: ${errMsg}`
-      }
-
-      console.error('[vna-service] Edge function error detail:', {
-        message: errMsg,
-        type: lastErrorType,
-        anbimaStatus: data?.anbimaStatus,
-        source: data?.source,
-      })
 
       throw new Error(errMsg)
     }
@@ -189,7 +180,6 @@ export async function fetchVnaFromSupabase(): Promise<VnaFetchResult> {
   } catch (e) {
     const errMsg = e instanceof Error ? e.message : String(e)
     const errType = lastErrorType
-    console.warn('[vna-service] Edge function invocation failed:', errMsg)
 
     if (existingRows && existingRows.length > 0) {
       return buildCachedResult(existingRows, errMsg, errType)

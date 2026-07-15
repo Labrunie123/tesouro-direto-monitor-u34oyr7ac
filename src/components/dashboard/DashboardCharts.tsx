@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart'
 import usePortfolioStore from '@/stores/usePortfolioStore'
 import { formatCurrency } from '@/lib/formatters'
+import { VnaHistoryChart } from '@/components/dashboard/VnaHistoryChart'
 
 export function DashboardCharts() {
   const { investments, calculateCurrentValue } = usePortfolioStore()
@@ -241,6 +242,10 @@ export function DashboardCharts() {
             </ChartContainer>
           </CardContent>
         </Card>
+      </div>
+
+      <div className="grid gap-6 mt-6 animate-fade-in-up" style={{ animationDelay: '700ms' }}>
+        <VnaHistoryChart />
       </div>
     </div>
   )

@@ -311,7 +311,7 @@ export function VnaCard() {
                 <Pencil className="h-3 w-3 shrink-0" />
                 Valor definido manualmente
               </p>
-            ) : vnaError ? (
+            ) : vnaError && isCached ? (
               <div className="mt-2 space-y-1">
                 <p className="text-xs text-amber-600 dark:text-amber-500 flex items-center gap-1">
                   <CloudOff className="h-3 w-3 shrink-0" />
@@ -327,6 +327,11 @@ export function VnaCard() {
                         ? vnaError
                         : 'API da ANBIMA indisponível. Exibindo último valor conhecido.'}
                 </p>
+                {vnaErrorType && (
+                  <p className="text-[10px] text-muted-foreground/70 font-mono">
+                    Tipo: {vnaErrorType}
+                  </p>
+                )}
                 <Button
                   size="sm"
                   variant="outline"
@@ -339,30 +344,33 @@ export function VnaCard() {
                 </Button>
               </div>
             ) : vnaError ? (
-              <p
-                className={cn(
-                  'text-xs mt-1 flex items-center gap-1 text-red-600 dark:text-red-400',
+              <div className="mt-2 space-y-1">
+                <p className={cn('text-xs flex items-center gap-1 text-red-600 dark:text-red-400')}>
+                  {isAuthError ? (
+                    <>
+                      <AlertCircle className="h-3 w-3 shrink-0" />
+                      <span className="line-clamp-2">{vnaError}</span>
+                    </>
+                  ) : isTimeout ? (
+                    <>
+                      <Clock className="h-3 w-3 shrink-0" />
+                      <span className="line-clamp-2">
+                        Tempo limite excedido ao conectar com a ANBIMA.
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="h-3 w-3 shrink-0" />
+                      <span className="line-clamp-2">{vnaError}</span>
+                    </>
+                  )}
+                </p>
+                {vnaErrorType && (
+                  <p className="text-[10px] text-muted-foreground/70 font-mono">
+                    Tipo: {vnaErrorType}
+                  </p>
                 )}
-              >
-                {isAuthError ? (
-                  <>
-                    <AlertCircle className="h-3 w-3 shrink-0" />
-                    <span className="line-clamp-2">{vnaError}</span>
-                  </>
-                ) : isTimeout ? (
-                  <>
-                    <Clock className="h-3 w-3 shrink-0" />
-                    <span className="line-clamp-2">
-                      Tempo limite excedido ao conectar com a ANBIMA.
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <AlertCircle className="h-3 w-3 shrink-0" />
-                    <span className="line-clamp-2">{vnaError}</span>
-                  </>
-                )}
-              </p>
+              </div>
             ) : (
               <p
                 className={cn(
@@ -404,6 +412,11 @@ export function VnaCard() {
                         ? vnaError
                         : 'API indisponível no momento'}
               </p>
+              {vnaErrorType && !vnaLoading && (
+                <p className="text-[10px] text-muted-foreground/70 font-mono mt-1">
+                  Tipo: {vnaErrorType}
+                </p>
+              )}
               {!vnaLoading && (
                 <Button
                   size="sm"
