@@ -296,10 +296,12 @@ export function VnaCard() {
                   <span className="font-medium">Dados Offline</span>
                   <span className="text-muted-foreground">— ref: {formatDate(vnaDate)}</span>
                 </p>
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-[11px] text-muted-foreground line-clamp-2">
                   {isTimeout
                     ? 'Tempo limite excedido ao conectar com a ANBIMA.'
-                    : 'API da ANBIMA indisponível. Exibindo último valor conhecido.'}
+                    : vnaError
+                      ? vnaError
+                      : 'API da ANBIMA indisponível. Exibindo último valor conhecido.'}
                 </p>
                 <Button
                   size="sm"
@@ -347,7 +349,9 @@ export function VnaCard() {
                   ? 'Sincronizando...'
                   : isTimeout
                     ? 'Tempo limite excedido'
-                    : 'API indisponível no momento'}
+                    : vnaError
+                      ? vnaError
+                      : 'API indisponível no momento'}
               </p>
               {!vnaLoading && (
                 <Button

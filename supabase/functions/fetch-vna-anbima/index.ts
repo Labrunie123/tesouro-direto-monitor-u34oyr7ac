@@ -2,7 +2,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 
-const ANBIMA_TOKEN_URL = 'https://api.anbima.com.br/oauth/access-token'
+const ANBIMA_TOKEN_URL = 'https://api-sandbox.anbima.com.br/oauth/access-token'
 const ANBIMA_VNA_URL =
   'https://api-sandbox.anbima.com.br/feed/precos-indices/v1/titulos-publicos/vna'
 

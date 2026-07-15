@@ -155,6 +155,8 @@ export async function fetchVnaData(onFallback?: () => void): Promise<VnaFetchRes
     backendErrorType = supaResult.errorType || null
   } catch (e) {
     console.warn('[vna-service] Supabase VNA fetch failed:', e)
+    backendError = e instanceof Error ? e.message : String(e)
+    backendErrorType = classifyError(e)
   }
 
   const errorMessage =
