@@ -27,6 +27,7 @@ import { toast } from '@/hooks/use-toast'
 import usePortfolioStore from '@/stores/usePortfolioStore'
 import { formatVnaCurrency, formatDate, formatDateTime, formatCurrency } from '@/lib/formatters'
 import { findVnaForTitle, getManualVna, saveManualVna, clearManualVna } from '@/lib/vna-service'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { cn } from '@/lib/utils'
 
 export function VnaCard() {
@@ -92,6 +93,7 @@ export function VnaCard() {
   const hasData = vnaValue > 0
   const showSkeleton = vnaLoading && !hasData
   const isTimeout = vnaErrorType === 'TIMEOUT_ERROR'
+  const isAuthError = vnaErrorType === 'AUTH_ERROR'
 
   const formattedSyncTime = useMemo(() => {
     if (isManual && manualVna) return formatDateTime(manualVna.date)
@@ -176,6 +178,26 @@ export function VnaCard() {
             className="text-[10px] py-0 px-1.5 text-amber-600 border-amber-500/50 bg-amber-500/10"
           >
             Em Cache
+          </Badge>
+        )
+      }
+      if (isAuthError) {
+        return (
+          <Badge
+            variant="outline"
+            className="text-[10px] py-0 px-1.5 text-red-600 border-red-500/50 bg-red-500/10"
+          >
+            Credenciais Inválidas
+          </Badge>
+        )
+      }
+      if (isTimeout) {
+        return (
+          <Badge
+            variant="outline"
+            className="text-[10px] py-0 px-1.5 text-orange-600 border-orange-500/50 bg-orange-500/10"
+          >
+            Tempo Esgotado
           </Badge>
         )
       }
@@ -298,10 +320,12 @@ export function VnaCard() {
                 </p>
                 <p className="text-[11px] text-muted-foreground line-clamp-2">
                   {isTimeout
-                    ? 'Tempo limite excedido ao conectar com a ANBIMA.'
-                    : vnaError
-                      ? vnaError
-                      : 'API da ANBIMA indisponível. Exibindo último valor conhecido.'}
+                    ? 'Tempo limite excedido ao conectar com a ANBIMA. O servidor pode estar indisponível.'
+                    : isAuthError
+                      ? 'Credenciais da ANBIMA inválidas ou não autorizadas. Verifique a configuração dos secrets.'
+                      : vnaError
+                        ? vnaError
+                        : 'API da ANBIMA indisponível. Exibindo último valor conhecido.'}
                 </p>
                 <Button
                   size="sm"
@@ -314,6 +338,31 @@ export function VnaCard() {
                   Tentar novamente
                 </Button>
               </div>
+            ) : vnaError ? (
+              <p
+                className={cn(
+                  'text-xs mt-1 flex items-center gap-1 text-red-600 dark:text-red-400',
+                )}
+              >
+                {isAuthError ? (
+                  <>
+                    <AlertCircle className="h-3 w-3 shrink-0" />
+                    <span className="line-clamp-2">{vnaError}</span>
+                  </>
+                ) : isTimeout ? (
+                  <>
+                    <Clock className="h-3 w-3 shrink-0" />
+                    <span className="line-clamp-2">
+                      Tempo limite excedido ao conectar com a ANBIMA.
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="h-3 w-3 shrink-0" />
+                    <span className="line-clamp-2">{vnaError}</span>
+                  </>
+                )}
+              </p>
             ) : (
               <p
                 className={cn(
@@ -347,11 +396,13 @@ export function VnaCard() {
                 <AlertCircle className="h-3 w-3 shrink-0" />
                 {vnaLoading
                   ? 'Sincronizando...'
-                  : isTimeout
-                    ? 'Tempo limite excedido'
-                    : vnaError
-                      ? vnaError
-                      : 'API indisponível no momento'}
+                  : isAuthError
+                    ? 'Credenciais inválidas'
+                    : isTimeout
+                      ? 'Tempo limite excedido'
+                      : vnaError
+                        ? vnaError
+                        : 'API indisponível no momento'}
               </p>
               {!vnaLoading && (
                 <Button

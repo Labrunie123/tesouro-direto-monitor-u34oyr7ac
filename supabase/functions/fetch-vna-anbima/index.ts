@@ -6,6 +6,8 @@ const ANBIMA_TOKEN_URL = 'https://api.anbima.com.br/oauth/access-token'
 const ANBIMA_VNA_URL =
   'https://api-sandbox.anbima.com.br/feed/precos-indices/v1/titulos-publicos/vna'
 
+const FETCH_TIMEOUT_MS = 20000
+
 interface VnaEntry {
   code: string
   title: string
@@ -14,26 +16,22 @@ interface VnaEntry {
   bondType: string
 }
 
-class AnbimaAuthError extends Error {
-  status: number
-  constructor(message: string, status: number) {
-    super(message)
-    this.name = 'AnbimaAuthError'
-    this.status = status
-  }
-}
-
-class AnbimaApiError extends Error {
-  status: number
-  constructor(message: string, status: number) {
-    super(message)
-    this.name = 'AnbimaApiError'
-    this.status = status
-  }
+function okResponse(body: Record<string, unknown>): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json', ...corsHeaders },
+  })
 }
 
 async function getAnbimaToken(clientId: string, clientSecret: string): Promise<string> {
+  console.log('[fetch-vna-anbima] Step 1: Starting ANBIMA OAuth authentication')
+  console.log('[fetch-vna-anbima] Token URL:', ANBIMA_TOKEN_URL)
+  console.log('[fetch-vna-anbima] Client ID present:', !!clientId)
+  console.log('[fetch-vna-anbima] Client Secret present:', !!clientSecret)
+
   const credentials = btoa(`${clientId}:${clientSecret}`)
+  console.log('[fetch-vna-anbima] Sending auth request with Basic credentials header')
+
   const response = await fetch(ANBIMA_TOKEN_URL, {
     method: 'POST',
     headers: {
@@ -41,29 +39,40 @@ async function getAnbimaToken(clientId: string, clientSecret: string): Promise<s
       Authorization: `Basic ${credentials}`,
     },
     body: JSON.stringify({ grant_type: 'client_credentials' }),
-    signal: AbortSignal.timeout(10000),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   })
+
+  console.log('[fetch-vna-anbima] Auth response status:', response.status)
 
   if (response.status === 401 || response.status === 403) {
     const text = await response.text().catch(() => '')
-    console.error('[fetch-vna-anbima] Auth failed:', response.status, text)
-    throw new AnbimaAuthError(
-      `ANBIMA authentication unauthorized (${response.status}). Verify client_id and client_secret. ANBIMA response: ${text}`,
-      response.status,
+    console.error('[fetch-vna-anbima] AUTH FAILED: Status', response.status, 'Body:', text)
+    throw new Error(
+      `ANBIMA authentication unauthorized (${response.status}). Verify ANBIMA_Client_ID and ANBIMA_Client_Secret. ANBIMA response: ${text}`,
     )
+  }
+
+  if (response.status === 429) {
+    console.error('[fetch-vna-anbima] AUTH RATE LIMITED: Too many token requests')
+    throw new Error('ANBIMA auth rate limit exceeded. Please try again later.')
   }
 
   if (!response.ok) {
     const text = await response.text().catch(() => '')
-    console.error('[fetch-vna-anbima] Auth HTTP error:', response.status, text)
-    throw new AnbimaAuthError(`ANBIMA auth failed (${response.status}): ${text}`, response.status)
+    console.error('[fetch-vna-anbima] AUTH HTTP ERROR: Status', response.status, 'Body:', text)
+    throw new Error(`ANBIMA auth request failed (HTTP ${response.status}): ${text}`)
   }
 
   const data = await response.json()
   if (!data.access_token) {
-    console.error('[fetch-vna-anbima] Auth response missing access_token:', JSON.stringify(data))
-    throw new AnbimaAuthError('ANBIMA auth: no access_token in response', 502)
+    console.error(
+      '[fetch-vna-anbima] AUTH ERROR: No access_token in response:',
+      JSON.stringify(data),
+    )
+    throw new Error('ANBIMA auth succeeded but no access_token was returned in the response')
   }
+
+  console.log('[fetch-vna-anbima] Step 1 Complete: Token obtained successfully')
   return data.access_token as string
 }
 
@@ -98,6 +107,9 @@ function parseAnbimaVna(data: unknown): VnaEntry[] {
 }
 
 async function fetchVnaFromAnbima(token: string, clientId: string): Promise<VnaEntry[]> {
+  console.log('[fetch-vna-anbima] Step 2: Fetching VNA data from ANBIMA sandbox API')
+  console.log('[fetch-vna-anbima] VNA URL:', ANBIMA_VNA_URL)
+
   const response = await fetch(ANBIMA_VNA_URL, {
     method: 'GET',
     headers: {
@@ -105,37 +117,50 @@ async function fetchVnaFromAnbima(token: string, clientId: string): Promise<VnaE
       access_token: token,
       'Content-Type': 'application/json',
     },
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   })
+
+  console.log('[fetch-vna-anbima] VNA API response status:', response.status)
 
   if (response.status === 401 || response.status === 403) {
     const text = await response.text().catch(() => '')
-    console.error('[fetch-vna-anbima] VNA API unauthorized:', response.status, text)
-    throw new AnbimaApiError(
+    console.error('[fetch-vna-anbima] VNA API UNAUTHORIZED: Status', response.status, 'Body:', text)
+    throw new Error(
       `ANBIMA VNA API unauthorized (${response.status}). Token may be invalid or expired. ANBIMA response: ${text}`,
-      response.status,
     )
+  }
+
+  if (response.status === 429) {
+    const text = await response.text().catch(() => '')
+    console.error('[fetch-vna-anbima] VNA API RATE LIMITED: Body:', text)
+    throw new Error('ANBIMA VNA API rate limit exceeded. Please try again later.')
   }
 
   if (!response.ok) {
     const text = await response.text().catch(() => '')
-    console.error('[fetch-vna-anbima] VNA API HTTP error:', response.status, text)
-    throw new AnbimaApiError(`ANBIMA VNA API failed (${response.status}): ${text}`, response.status)
+    console.error('[fetch-vna-anbima] VNA API HTTP ERROR: Status', response.status, 'Body:', text)
+    throw new Error(`ANBIMA VNA API failed (HTTP ${response.status}): ${text}`)
   }
 
   const data = await response.json()
+  console.log('[fetch-vna-anbima] VNA data received, parsing entries...')
+
   const entries = parseAnbimaVna(data)
   if (entries.length === 0) {
     console.error(
       '[fetch-vna-anbima] No VNA entries parsed from response:',
       JSON.stringify(data).slice(0, 500),
     )
-    throw new AnbimaApiError('No VNA entries returned from ANBIMA', 502)
+    throw new Error('No VNA entries returned from ANBIMA')
   }
+
+  console.log('[fetch-vna-anbima] Step 2 Complete: Parsed', entries.length, 'VNA entries')
   return entries
 }
 
 async function upsertVnaHistory(entries: VnaEntry[]): Promise<void> {
+  console.log('[fetch-vna-anbima] Step 3: Persisting VNA data to vna_history table')
+
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
   const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   const supabase = createClient(supabaseUrl, supabaseKey)
@@ -148,25 +173,29 @@ async function upsertVnaHistory(entries: VnaEntry[]): Promise<void> {
       bond_type: e.bondType || 'NTN-B',
     }))
 
-  if (rows.length === 0) return
+  if (rows.length === 0) {
+    console.warn('[fetch-vna-anbima] No valid rows to upsert after filtering')
+    return
+  }
+
+  console.log('[fetch-vna-anbima] Upserting', rows.length, 'rows into vna_history')
 
   const { error } = await supabase.from('vna_history').upsert(rows, {
     onConflict: 'reference_date,bond_type',
   })
 
   if (error) {
-    console.error('[fetch-vna-anbima] Database upsert error:', error.message, error.details)
+    console.error('[fetch-vna-anbima] DATABASE UPSERT ERROR:', error.message, error.details)
+    throw new Error(`Database error during VNA persistence: ${error.message}`)
   }
-}
 
-function jsonResponse(body: Record<string, unknown>, status: number): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json', ...corsHeaders },
-  })
+  console.log('[fetch-vna-anbima] Step 3 Complete: Database upsert successful')
 }
 
 Deno.serve(async (req: Request) => {
+  console.log('[fetch-vna-anbima] === VNA Fetch Request Received ===')
+  console.log('[fetch-vna-anbima] Request method:', req.method)
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -176,21 +205,38 @@ Deno.serve(async (req: Request) => {
     const clientSecret =
       Deno.env.get('ANBIMA_CLIENT_SECRET') || Deno.env.get('ANBIMA_Client_Secret')
 
+    console.log('[fetch-vna-anbima] Credential check:', {
+      hasClientId: !!clientId,
+      hasClientSecret: !!clientSecret,
+      clientIdSource: Deno.env.get('ANBIMA_CLIENT_ID')
+        ? 'ANBIMA_CLIENT_ID'
+        : Deno.env.get('ANBIMA_Client_ID')
+          ? 'ANBIMA_Client_ID'
+          : 'NOT_FOUND',
+      clientSecretSource: Deno.env.get('ANBIMA_CLIENT_SECRET')
+        ? 'ANBIMA_CLIENT_SECRET'
+        : Deno.env.get('ANBIMA_Client_Secret')
+          ? 'ANBIMA_Client_Secret'
+          : 'NOT_FOUND',
+    })
+
     if (!clientId || !clientSecret) {
-      console.error('[fetch-vna-anbima] Missing ANBIMA credentials in secrets')
-      return jsonResponse(
-        {
-          success: false,
-          error:
-            'ANBIMA credentials not configured. Set ANBIMA_Client_ID and ANBIMA_Client_Secret in Supabase secrets.',
-          entries: [],
-          date: null,
-          fetchedAt: new Date().toISOString(),
-          source: 'ANBIMA',
-        },
-        500,
+      console.error(
+        '[fetch-vna-anbima] MISSING CREDENTIALS: ANBIMA credentials not found in environment variables',
       )
+      return okResponse({
+        success: false,
+        error:
+          'ANBIMA credentials not configured. Set ANBIMA_Client_ID and ANBIMA_Client_Secret in Supabase project secrets.',
+        errorType: 'CONFIG_ERROR',
+        entries: [],
+        date: null,
+        fetchedAt: new Date().toISOString(),
+        source: 'ANBIMA',
+      })
     }
+
+    console.log('[fetch-vna-anbima] Credentials found, proceeding with ANBIMA API calls')
 
     const token = await getAnbimaToken(clientId, clientSecret)
     const entries = await fetchVnaFromAnbima(token, clientId)
@@ -198,96 +244,71 @@ Deno.serve(async (req: Request) => {
 
     const target = entries.find((e) => e.code === '760199') || entries[0]
 
-    return jsonResponse(
-      {
-        success: true,
-        entries,
-        date: target.date,
-        fetchedAt: new Date().toISOString(),
-        source: 'ANBIMA',
-      },
-      200,
-    )
+    console.log('[fetch-vna-anbima] === VNA Fetch Successful ===')
+    console.log('[fetch-vna-anbima] Target entry:', {
+      code: target.code,
+      title: target.title,
+      date: target.date,
+      vna: target.vna,
+    })
+
+    return okResponse({
+      success: true,
+      entries,
+      date: target.date,
+      fetchedAt: new Date().toISOString(),
+      source: 'ANBIMA',
+    })
   } catch (error) {
-    console.error('[fetch-vna-anbima] Error:', error)
-
-    if (error instanceof AnbimaAuthError) {
-      return jsonResponse(
-        {
-          success: false,
-          error: error.message,
-          errorType: 'AUTH_ERROR',
-          anbimaStatus: error.status,
-          entries: [],
-          date: null,
-          fetchedAt: new Date().toISOString(),
-          source: 'ANBIMA',
-        },
-        error.status >= 400 && error.status < 600 ? error.status : 401,
-      )
-    }
-
-    if (error instanceof AnbimaApiError) {
-      return jsonResponse(
-        {
-          success: false,
-          error: error.message,
-          errorType: 'API_ERROR',
-          anbimaStatus: error.status,
-          entries: [],
-          date: null,
-          fetchedAt: new Date().toISOString(),
-          source: 'ANBIMA',
-        },
-        error.status >= 400 && error.status < 600 ? error.status : 502,
-      )
-    }
-
-    if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
-      console.error('[fetch-vna-anbima] Timeout:', error.message)
-      return jsonResponse(
-        {
-          success: false,
-          error:
-            'Tempo limite excedido ao conectar com a API da ANBIMA. Tente novamente em alguns instantes.',
-          errorType: 'TIMEOUT_ERROR',
-          entries: [],
-          date: null,
-          fetchedAt: new Date().toISOString(),
-          source: 'ANBIMA',
-        },
-        504,
-      )
-    }
-
-    if (error instanceof TypeError) {
-      console.error('[fetch-vna-anbima] Network error:', error.message)
-      return jsonResponse(
-        {
-          success: false,
-          error: 'Erro de rede ao conectar com a API da ANBIMA. Verifique a conectividade.',
-          errorType: 'NETWORK_ERROR',
-          entries: [],
-          date: null,
-          fetchedAt: new Date().toISOString(),
-          source: 'ANBIMA',
-        },
-        503,
-      )
-    }
-
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    return jsonResponse(
-      {
-        success: false,
-        error: errorMessage,
-        errorType: 'UNKNOWN_ERROR',
-        entries: [],
-        date: null,
-        fetchedAt: new Date().toISOString(),
-        source: 'ANBIMA',
-      },
-      502,
+    console.error('[fetch-vna-anbima] === VNA Fetch Failed ===')
+    console.error('[fetch-vna-anbima] Error constructor:', error?.constructor?.name || 'Unknown')
+    console.error(
+      '[fetch-vna-anbima] Error message:',
+      error instanceof Error ? error.message : String(error),
     )
+    if (error instanceof Error && error.stack) {
+      console.error('[fetch-vna-anbima] Error stack:', error.stack)
+    }
+
+    let errorType = 'UNKNOWN_ERROR'
+    let userMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+
+    if (error instanceof Error) {
+      if (error.name === 'TimeoutError' || error.name === 'AbortError') {
+        errorType = 'TIMEOUT_ERROR'
+        userMessage =
+          'Timeout Error: ANBIMA API did not respond within 20 seconds. Please try again in a few moments.'
+        console.error('[fetch-vna-anbima] TIMEOUT: Request exceeded 20 second limit')
+      } else if (error instanceof TypeError) {
+        errorType = 'NETWORK_ERROR'
+        userMessage =
+          'Network Error: Unable to connect to ANBIMA API. Please verify network connectivity.'
+        console.error('[fetch-vna-anbima] NETWORK ERROR:', error.message)
+      } else {
+        const msg = error.message.toLowerCase()
+        if (msg.includes('unauthorized') || msg.includes('401') || msg.includes('403')) {
+          errorType = 'AUTH_ERROR'
+          console.error('[fetch-vna-anbima] AUTH ERROR: Check ANBIMA credentials')
+        } else if (msg.includes('rate limit') || msg.includes('429')) {
+          errorType = 'RATE_LIMIT_ERROR'
+          console.error('[fetch-vna-anbima] RATE LIMIT: Too many requests to ANBIMA API')
+        } else if (msg.includes('database')) {
+          errorType = 'DATABASE_ERROR'
+          console.error('[fetch-vna-anbima] DATABASE ERROR: Failed to persist VNA data')
+        } else {
+          errorType = 'API_ERROR'
+        }
+      }
+    }
+
+    return okResponse({
+      success: false,
+      error: userMessage,
+      errorType,
+      entries: [],
+      date: null,
+      fetchedAt: new Date().toISOString(),
+      source: 'ANBIMA',
+    })
   }
 })

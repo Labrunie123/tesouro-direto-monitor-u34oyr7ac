@@ -2,6 +2,8 @@ import { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase/client'
 import type { VnaEntry, VnaFetchResult, VnaErrorType } from '@/lib/vna-service'
 
+const RATE_LIMIT_ERROR_TYPES: VnaErrorType[] = ['API_ERROR']
+
 const TARGET_SELIC_CODE = '760199'
 const FETCH_CACHE_KEY = '@tesouro-vision:vna-fetch-cache'
 const FETCH_DATE_KEY = '@tesouro-vision:vna-fetch-date'
@@ -119,7 +121,8 @@ export async function fetchVnaFromSupabase(): Promise<VnaFetchResult> {
       const errorBody = await readErrorBody(error.context)
       const status = error.context.status
       const errMsg = errorBody?.error || `Error ${status}: Edge function failed`
-      lastErrorType = (errorBody?.errorType as VnaErrorType) || 'API_ERROR'
+      const rawType = (errorBody?.errorType as string) || 'API_ERROR'
+      lastErrorType = (rawType === 'RATE_LIMIT_ERROR' ? 'API_ERROR' : rawType) as VnaErrorType
 
       const formattedMsg = `Error ${status}: ${errMsg}`
 
@@ -152,7 +155,8 @@ export async function fetchVnaFromSupabase(): Promise<VnaFetchResult> {
 
     if (!data?.success) {
       let errMsg = data?.error || 'Edge function returned failure'
-      lastErrorType = (data?.errorType as VnaErrorType) || 'API_ERROR'
+      const rawType = (data?.errorType as string) || 'API_ERROR'
+      lastErrorType = (rawType === 'RATE_LIMIT_ERROR' ? 'API_ERROR' : rawType) as VnaErrorType
 
       if (data?.anbimaStatus) {
         errMsg = `Error ${data.anbimaStatus}: ${errMsg}`
