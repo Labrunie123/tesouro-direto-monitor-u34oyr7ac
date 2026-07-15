@@ -51,7 +51,7 @@ export async function fetchVnaFromSupabase(): Promise<VnaFetchResult | null> {
   let existingRows: VnaHistoryRow[] | null = null
 
   try {
-    const { data, error } = await (supabase as unknown as Record<string, unknown>)
+    const { data, error } = await supabase
       .from('vna_history')
       .select('*')
       .order('reference_date', { ascending: false })

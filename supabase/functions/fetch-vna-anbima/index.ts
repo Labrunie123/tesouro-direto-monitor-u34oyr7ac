@@ -2,7 +2,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 
-const ANBIMA_TOKEN_URL = 'https://api.anbima.com.br/oauth2/token'
+const ANBIMA_TOKEN_URL = 'https://api.anbima.com.br/oauth/access-token'
 const ANBIMA_VNA_URL = 'https://api.anbima.com.br/feed/precos-indices/v1/titulos-publicos/vna'
 
 interface VnaEntry {
@@ -17,12 +17,18 @@ async function getAnbimaToken(clientId: string, clientSecret: string): Promise<s
   const response = await fetch(ANBIMA_TOKEN_URL, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
+      'Content-Type': 'application/json',
       Authorization: `Basic ${credentials}`,
     },
-    body: 'grant_type=client_credentials',
+    body: JSON.stringify({ grant_type: 'client_credentials' }),
     signal: AbortSignal.timeout(10000),
   })
+
+  if (response.status === 401 || response.status === 403) {
+    throw new Error(
+      `ANBIMA authentication unauthorized (${response.status}). Verify client_id and client_secret.`,
+    )
+  }
 
   if (!response.ok) {
     const text = await response.text()
@@ -43,18 +49,17 @@ function parseAnbimaVna(data: unknown): VnaEntry[] {
       ((data as Record<string, unknown>)?.items as unknown[]) ||
       []
 
-  const today = new Date().toISOString().split('T')[0]
   const entries: VnaEntry[] = []
 
   for (const item of items) {
     const obj = item as Record<string, unknown>
     const bondType = String(obj.tipo_titulo || obj.tipo || obj.bond_type || 'NTN-B')
     const vna = Number(obj.vna || obj.valor || 0)
-    const refDate = String(obj.data_referencia || obj.data || obj.reference_date || today)
+    const refDate = String(obj.data_referencia || obj.data || obj.reference_date || '')
 
     if (vna > 0) {
       entries.push({
-        code: bondType.includes('NTN-B') ? '760199' : '760199',
+        code: '760199',
         title: bondType,
         vna,
         date: refDate.split('T')[0],
@@ -64,14 +69,21 @@ function parseAnbimaVna(data: unknown): VnaEntry[] {
   return entries
 }
 
-async function fetchVnaFromAnbima(token: string): Promise<VnaEntry[]> {
+async function fetchVnaFromAnbima(token: string, clientId: string): Promise<VnaEntry[]> {
   const response = await fetch(ANBIMA_VNA_URL, {
     headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/json',
+      client_id: clientId,
+      access_token: token,
+      'Content-Type': 'application/json',
     },
     signal: AbortSignal.timeout(15000),
   })
+
+  if (response.status === 401 || response.status === 403) {
+    throw new Error(
+      `ANBIMA VNA API unauthorized (${response.status}). Token may be invalid or expired.`,
+    )
+  }
 
   if (!response.ok) {
     const text = await response.text()
@@ -113,9 +125,8 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const clientId = Deno.env.get('ANBIMA_CLIENT_ID') || Deno.env.get('ANBIMA_Client_ID')
-    const clientSecret =
-      Deno.env.get('ANBIMA_CLIENT_SECRET') || Deno.env.get('ANBIMA_Client_Secret')
+    const clientId = Deno.env.get('ANBIMA_Client_ID')
+    const clientSecret = Deno.env.get('ANBIMA_Client_Secret')
 
     if (!clientId || !clientSecret) {
       return new Response(
@@ -135,7 +146,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const token = await getAnbimaToken(clientId, clientSecret)
-    const entries = await fetchVnaFromAnbima(token)
+    const entries = await fetchVnaFromAnbima(token, clientId)
     await upsertVnaHistory(entries)
 
     const target = entries.find((e) => e.code === '760199') || entries[0]

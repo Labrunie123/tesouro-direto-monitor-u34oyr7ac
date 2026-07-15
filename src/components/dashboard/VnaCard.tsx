@@ -294,8 +294,8 @@ export function VnaCard() {
                 </p>
                 <p className="text-[11px] text-muted-foreground">
                   {isTimeout
-                    ? 'Tempo limite excedido ao conectar com a B3.'
-                    : 'API da B3 indisponível. Exibindo último valor conhecido.'}
+                    ? 'Tempo limite excedido ao conectar com a ANBIMA.'
+                    : 'API da ANBIMA indisponível. Exibindo último valor conhecido.'}
                 </p>
                 <Button
                   size="sm"
@@ -323,8 +323,8 @@ export function VnaCard() {
                 {vnaDate
                   ? isStale
                     ? `Valor de referência: ${formatDate(vnaDate)} (ainda não publicado hoje)`
-                    : `Atualizado em ${formatDate(vnaDate)} · ${effectiveSource === 'BrasilIndicadores' ? 'Brasil Indicadores (fallback)' : 'B3 Tesouro Direto'} · Selic 760199`
-                  : 'Referência B3 Tesouro Direto · Código Selic 760199'}
+                    : `Atualizado em ${formatDate(vnaDate)} · ANBIMA · Selic 760199`
+                  : 'Referência ANBIMA · Código Selic 760199'}{' '}
               </p>
             )}
             {formattedSyncTime && (

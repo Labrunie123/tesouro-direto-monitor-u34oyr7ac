@@ -1,3 +1,5 @@
+import { fetchVnaFromSupabase } from '@/services/vna'
+
 export interface VnaEntry {
   code: string
   title: string
@@ -30,13 +32,6 @@ const FETCH_DATE_KEY = '@tesouro-vision:vna-fetch-date'
 const FETCH_SYNC_KEY = '@tesouro-vision:vna-fetch-sync'
 const FETCH_ERROR_KEY = '@tesouro-vision:vna-fetch-error'
 
-import { supabase } from '@/lib/supabase/client'
-import { fetchVnaFromSupabase } from '@/services/vna'
-
-const HOOK_URL = import.meta.env.VITE_VNA_HOOK_URL || '/hooks/fetch-vna'
-const ALTERNATIVE_HOOK_URL =
-  import.meta.env.VITE_VNA_ALTERNATIVE_HOOK_URL || '/hooks/fetch-vna-alternative'
-
 const todayStr = () => new Date().toISOString().split('T')[0]
 
 export const DEFAULT_VNA_DATA: VnaEntry[] = [
@@ -52,18 +47,8 @@ export const DEFAULT_VNA_DATA: VnaEntry[] = [
     vna: 3128.451893,
     date: todayStr(),
   },
-  {
-    code: '760197',
-    title: 'Tesouro IPCA+ 2029',
-    vna: 2856.732451,
-    date: todayStr(),
-  },
-  {
-    code: '760196',
-    title: 'Tesouro IPCA+ 2035',
-    vna: 3012.183567,
-    date: todayStr(),
-  },
+  { code: '760197', title: 'Tesouro IPCA+ 2029', vna: 2856.732451, date: todayStr() },
+  { code: '760196', title: 'Tesouro IPCA+ 2035', vna: 3012.183567, date: todayStr() },
 ]
 
 const TITLE_CODE_MAP: Record<string, string> = {
@@ -94,121 +79,18 @@ export function findVnaForTitle(entries: VnaEntry[], title: string): number | nu
   return null
 }
 
-interface HookResponse {
-  success: boolean
-  entries: VnaEntry[]
-  date: string | null
-  error?: string
-  errorType?: string
-  fetchedAt?: string
-  source?: string
+function isBusinessDay(date: Date): boolean {
+  const day = date.getDay()
+  return day !== 0 && day !== 6
 }
 
-async function fetchFromHook(): Promise<HookResponse> {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 15000)
-
-  try {
-    const response = await fetch(HOOK_URL, {
-      signal: controller.signal,
-      headers: { Accept: 'application/json' },
-    })
-    clearTimeout(timeout)
-
-    const contentType = response.headers.get('content-type') || ''
-    if (!contentType.includes('application/json')) {
-      const text = await response.text()
-      if (text.trim().startsWith('<') || text.includes('<!DOCTYPE') || text.includes('<!--')) {
-        throw new Error(
-          'API retornou HTML em vez de JSON (possível erro de CORS ou servidor offline)',
-        )
-      }
-      throw new Error(`API retornou formato inesperado: ${contentType}`)
-    }
-
-    const data: HookResponse = await response.json()
-
-    if (!response.ok || !data.success) {
-      throw new Error(data.error || `Hook returned status ${response.status}`)
-    }
-
-    return data
-  } catch (error) {
-    clearTimeout(timeout)
-    if (
-      error instanceof DOMException &&
-      (error.name === 'AbortError' || error.name === 'TimeoutError')
-    ) {
-      throw new Error('Tempo limite excedido ao conectar com a API da B3')
-    }
-    if (error instanceof SyntaxError && error.message.includes('JSON')) {
-      throw new Error('Resposta inválida da API (HTML recebido em vez de JSON - possível CORS)')
-    }
-    throw error
-  }
-}
-
-async function fetchFromAlternativeHook(): Promise<HookResponse> {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 10000)
-
-  try {
-    const response = await fetch(ALTERNATIVE_HOOK_URL, {
-      signal: controller.signal,
-      headers: { Accept: 'application/json' },
-    })
-    clearTimeout(timeout)
-
-    const contentType = response.headers.get('content-type') || ''
-    if (!contentType.includes('application/json')) {
-      const text = await response.text()
-      if (text.trim().startsWith('<') || text.includes('<!DOCTYPE') || text.includes('<!--')) {
-        throw new Error('Fonte alternativa retornou HTML em vez de JSON (possível erro de CORS)')
-      }
-      throw new Error(`Fonte alternativa retornou formato inesperado: ${contentType}`)
-    }
-
-    const data: HookResponse = await response.json()
-
-    if (!response.ok || !data.success) {
-      throw new Error(data.error || `Alternative hook returned status ${response.status}`)
-    }
-
-    return data
-  } catch (error) {
-    clearTimeout(timeout)
-    if (
-      error instanceof DOMException &&
-      (error.name === 'AbortError' || error.name === 'TimeoutError')
-    ) {
-      throw new Error('Tempo limite excedido ao conectar com fonte alternativa')
-    }
-    if (error instanceof SyntaxError && error.message.includes('JSON')) {
-      throw new Error('Resposta inválida da fonte alternativa (HTML recebido em vez de JSON)')
-    }
-    throw error
-  }
-}
-
-async function fetchWithRetry(maxRetries: number = 2): Promise<HookResponse> {
-  let lastError: Error | null = null
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fetchFromHook()
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error))
-      console.warn(
-        `[vna-service] B3 API fetch attempt ${attempt + 1}/${maxRetries + 1} failed:`,
-        lastError.message,
-      )
-      if (attempt < maxRetries) {
-        await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)))
-      }
-    }
-  }
-
-  throw lastError || new Error('All retry attempts failed')
+function getMostRecentBusinessDay(): string {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  if (isBusinessDay(today)) return today.toISOString().split('T')[0]
+  const friday = new Date(today)
+  friday.setDate(friday.getDate() - (today.getDay() === 0 ? 2 : 1))
+  return friday.toISOString().split('T')[0]
 }
 
 function getCachedEntries(): VnaEntry[] | null {
@@ -216,7 +98,7 @@ function getCachedEntries(): VnaEntry[] | null {
     const cached = localStorage.getItem(FETCH_CACHE_KEY)
     if (cached) return JSON.parse(cached)
   } catch {
-    // ignore
+    /* ignore */
   }
   return null
 }
@@ -237,22 +119,6 @@ function getCachedDate(): string | null {
   }
 }
 
-function isBusinessDay(date: Date): boolean {
-  const day = date.getDay()
-  return day !== 0 && day !== 6
-}
-
-function getMostRecentBusinessDay(): string {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
-  if (isBusinessDay(today)) return today.toISOString().split('T')[0]
-
-  const friday = new Date(today)
-  friday.setDate(friday.getDate() - (today.getDay() === 0 ? 2 : 1))
-  return friday.toISOString().split('T')[0]
-}
-
 function classifyError(error: unknown): VnaErrorType {
   if (error instanceof TypeError) return 'NETWORK_ERROR'
   if (error instanceof DOMException) {
@@ -263,130 +129,61 @@ function classifyError(error: unknown): VnaErrorType {
     if (
       error.message.includes('parse') ||
       error.message.includes('JSON') ||
-      error.message.includes('HTML') ||
-      error.message.includes('CORS')
-    ) {
+      error.message.includes('HTML')
+    )
       return 'PARSE_ERROR'
-    }
     if (error.message.includes('status') || error.message.includes('format')) return 'API_ERROR'
   }
   return 'UNKNOWN_ERROR'
 }
 
 export async function fetchVnaData(onFallback?: () => void): Promise<VnaFetchResult> {
-  const today = todayStr()
-  const lastFetchDate = getCachedDate()
   const expectedDate = getMostRecentBusinessDay()
+  const lastFetchDate = getCachedDate()
 
-  // Primary source: Supabase (database + ANBIMA edge function)
   try {
     const supaResult = await fetchVnaFromSupabase()
-    if (supaResult) {
-      return supaResult
-    }
+    if (supaResult) return supaResult
   } catch (e) {
-    console.warn('[vna-service] Supabase VNA fetch failed, falling back to B3 hook:', e)
+    console.warn('[vna-service] Supabase VNA fetch failed:', e)
   }
 
-  // Fallback: B3 hook with retry
+  const errorMessage =
+    'Não foi possível obter dados do VNA da ANBIMA. Exibindo último valor conhecido.'
+  const errorType: VnaErrorType = 'API_ERROR'
+
   try {
-    const result = await fetchWithRetry(2)
-
-    const targetEntry = result.entries.find((e) => e.code === TARGET_SELIC_CODE && e.vna > 0)
-    const referenceDate = targetEntry?.date || result.date || today
-
-    localStorage.setItem(FETCH_CACHE_KEY, JSON.stringify(result.entries))
-    localStorage.setItem(FETCH_DATE_KEY, referenceDate)
-    localStorage.setItem(FETCH_SYNC_KEY, result.fetchedAt || new Date().toISOString())
-    localStorage.removeItem(FETCH_ERROR_KEY)
-
-    return {
-      entries: result.entries,
-      date: referenceDate,
-      status: 'fresh',
-      fetchedAt: result.fetchedAt || new Date().toISOString(),
-      source: 'B3-TesouroDireto',
-    }
-  } catch (e) {
-    const primaryError = e instanceof Error ? e.message : String(e)
-    const primaryErrorType = classifyError(e)
-
-    console.warn(
-      '[vna-service] B3 API failed, attempting alternative source (Brasil Indicadores):',
-      {
-        message: primaryError,
-        type: primaryErrorType,
+    localStorage.setItem(
+      FETCH_ERROR_KEY,
+      JSON.stringify({
+        message: errorMessage,
+        type: errorType,
         timestamp: new Date().toISOString(),
-      },
+      }),
     )
+  } catch {
+    /* ignore */
+  }
 
-    onFallback?.()
-
-    try {
-      const altResult = await fetchFromAlternativeHook()
-      const targetEntry = altResult.entries.find(
-        (entry) => entry.code === TARGET_SELIC_CODE && entry.vna > 0,
-      )
-      const referenceDate = targetEntry?.date || altResult.date || today
-
-      localStorage.setItem(FETCH_CACHE_KEY, JSON.stringify(altResult.entries))
-      localStorage.setItem(FETCH_DATE_KEY, referenceDate)
-      localStorage.setItem(FETCH_SYNC_KEY, altResult.fetchedAt || new Date().toISOString())
-      localStorage.removeItem(FETCH_ERROR_KEY)
-
-      console.info('[vna-service] Alternative source (Brasil Indicadores) fetch succeeded:', {
-        vna: targetEntry?.vna,
-        date: referenceDate,
-        timestamp: new Date().toISOString(),
-      })
-
-      return {
-        entries: altResult.entries,
-        date: referenceDate,
-        status: 'fresh',
-        fetchedAt: altResult.fetchedAt || new Date().toISOString(),
-        source: 'BrasilIndicadores',
-      }
-    } catch (altError) {
-      const errorMessage = altError instanceof Error ? altError.message : String(altError)
-      const errorType = classifyError(altError)
-
-      console.error('[vna-service] Both primary and alternative sources failed:', {
-        primaryError: primaryError,
-        alternativeError: errorMessage,
-        timestamp: new Date().toISOString(),
-      })
-
-      localStorage.setItem(
-        FETCH_ERROR_KEY,
-        JSON.stringify({
-          message: errorMessage,
-          type: errorType,
-          timestamp: new Date().toISOString(),
-        }),
-      )
-
-      const cached = getCachedEntries()
-      if (cached && cached.length > 0) {
-        return {
-          entries: cached,
-          date: lastFetchDate || expectedDate,
-          status: 'cached',
-          fetchedAt: getCachedSyncTime(),
-          error: errorMessage,
-          errorType,
-        }
-      }
-
-      return {
-        entries: DEFAULT_VNA_DATA,
-        date: expectedDate,
-        status: 'default',
-        fetchedAt: null,
-        error: errorMessage,
-        errorType,
-      }
+  const cached = getCachedEntries()
+  if (cached && cached.length > 0) {
+    return {
+      entries: cached,
+      date: lastFetchDate || expectedDate,
+      status: 'cached',
+      fetchedAt: getCachedSyncTime(),
+      error: errorMessage,
+      errorType,
     }
+  }
+
+  return {
+    entries: DEFAULT_VNA_DATA,
+    date: expectedDate,
+    status: 'default',
+    fetchedAt: null,
+    error: errorMessage,
+    errorType,
   }
 }
 
@@ -404,7 +201,7 @@ export function clearLastError(): void {
   try {
     localStorage.removeItem(FETCH_ERROR_KEY)
   } catch {
-    // ignore
+    /* ignore */
   }
 }
 
@@ -421,7 +218,7 @@ export function saveManualVna(vna: number): void {
     localStorage.setItem(MANUAL_VNA_KEY, String(vna))
     localStorage.setItem(MANUAL_VNA_DATE_KEY, new Date().toISOString())
   } catch {
-    // ignore
+    /* ignore */
   }
 }
 
@@ -443,6 +240,6 @@ export function clearManualVna(): void {
     localStorage.removeItem(MANUAL_VNA_KEY)
     localStorage.removeItem(MANUAL_VNA_DATE_KEY)
   } catch {
-    // ignore
+    /* ignore */
   }
 }
