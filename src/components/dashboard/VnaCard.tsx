@@ -51,18 +51,19 @@ export function VnaCard() {
   useEffect(() => {
     if (vnaError && vnaError !== prevErrorRef.current && !vnaLoading) {
       const hasManual = getManualVna() !== null
+      const errorPrefix = vnaErrorType ? `[${vnaErrorType}] ` : ''
       toast({
         title: 'Erro ao buscar VNA',
         description: hasManual
-          ? 'Não foi possível obter o VNA automaticamente. Usando valor manual salvo.'
-          : 'Não foi possível obter o VNA automaticamente. Use a entrada manual para manter seus cálculos.',
+          ? `${errorPrefix}Não foi possível obter o VNA automaticamente. Usando valor manual salvo.`
+          : `${errorPrefix}${vnaError || 'Não foi possível obter o VNA automaticamente. Use a entrada manual para manter seus cálculos.'}`,
         variant: hasManual ? 'default' : 'destructive',
       })
       prevErrorRef.current = vnaError
     } else if (!vnaError) {
       prevErrorRef.current = null
     }
-  }, [vnaError, vnaLoading])
+  }, [vnaError, vnaErrorType, vnaLoading])
 
   const fetchedVnaValue = useMemo(() => {
     const ipcaInv = investments.find((inv) => inv.type === 'IPCA+')

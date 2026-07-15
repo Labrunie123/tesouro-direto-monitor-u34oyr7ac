@@ -10,6 +10,7 @@ export interface VnaEntry {
 export type VnaFetchStatus = 'fresh' | 'cached' | 'default'
 
 export type VnaErrorType =
+  | 'AUTH_ERROR'
   | 'NETWORK_ERROR'
   | 'TIMEOUT_ERROR'
   | 'API_ERROR'
@@ -141,16 +142,22 @@ export async function fetchVnaData(onFallback?: () => void): Promise<VnaFetchRes
   const expectedDate = getMostRecentBusinessDay()
   const lastFetchDate = getCachedDate()
 
+  let backendError: string | null = null
+  let backendErrorType: VnaErrorType | null = null
+
   try {
     const supaResult = await fetchVnaFromSupabase()
-    if (supaResult) return supaResult
+    if (supaResult.entries.length > 0) return supaResult
+    backendError = supaResult.error || null
+    backendErrorType = supaResult.errorType || null
   } catch (e) {
     console.warn('[vna-service] Supabase VNA fetch failed:', e)
   }
 
   const errorMessage =
+    backendError ||
     'Não foi possível obter dados do VNA da ANBIMA. Exibindo último valor conhecido.'
-  const errorType: VnaErrorType = 'API_ERROR'
+  const errorType: VnaErrorType = backendErrorType || 'API_ERROR'
 
   try {
     localStorage.setItem(

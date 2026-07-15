@@ -1,11 +1,10 @@
 import { supabase } from '@/lib/supabase/client'
-import type { VnaEntry, VnaFetchResult } from '@/lib/vna-service'
+import type { VnaEntry, VnaFetchResult, VnaErrorType } from '@/lib/vna-service'
 
 const TARGET_SELIC_CODE = '760199'
 const FETCH_CACHE_KEY = '@tesouro-vision:vna-fetch-cache'
 const FETCH_DATE_KEY = '@tesouro-vision:vna-fetch-date'
 const FETCH_SYNC_KEY = '@tesouro-vision:vna-fetch-sync'
-const FETCH_ERROR_KEY = '@tesouro-vision:vna-fetch-error'
 
 interface VnaHistoryRow {
   id: string
@@ -39,16 +38,15 @@ function cacheToLocalStorage(entries: VnaEntry[], date: string, fetchedAt: strin
     localStorage.setItem(FETCH_CACHE_KEY, JSON.stringify(entries))
     localStorage.setItem(FETCH_DATE_KEY, date)
     localStorage.setItem(FETCH_SYNC_KEY, fetchedAt)
-    localStorage.removeItem(FETCH_ERROR_KEY)
   } catch {
     // ignore
   }
 }
 
-export async function fetchVnaFromSupabase(): Promise<VnaFetchResult | null> {
+export async function fetchVnaFromSupabase(): Promise<VnaFetchResult> {
   const expectedDate = getMostRecentBusinessDay()
-
   let existingRows: VnaHistoryRow[] | null = null
+  let lastErrorType: VnaErrorType = 'API_ERROR'
 
   try {
     const { data, error } = await supabase
@@ -91,7 +89,7 @@ export async function fetchVnaFromSupabase(): Promise<VnaFetchResult | null> {
 
     if (!data?.success) {
       const errMsg = data?.error || 'Edge function returned failure'
-      console.warn('[vna-service] Edge function failure:', errMsg)
+      lastErrorType = (data?.errorType as VnaErrorType) || 'API_ERROR'
       throw new Error(errMsg)
     }
 
@@ -111,6 +109,7 @@ export async function fetchVnaFromSupabase(): Promise<VnaFetchResult | null> {
     }
   } catch (e) {
     const errMsg = e instanceof Error ? e.message : String(e)
+    const errType = lastErrorType
     console.warn('[vna-service] Edge function invocation failed:', errMsg)
 
     if (existingRows && existingRows.length > 0) {
@@ -122,9 +121,17 @@ export async function fetchVnaFromSupabase(): Promise<VnaFetchResult | null> {
         fetchedAt: existingRows[0].created_at,
         source: 'Supabase-Cached',
         error: errMsg,
+        errorType: errType,
       }
     }
 
-    return null
+    return {
+      entries: [],
+      date: expectedDate,
+      status: 'default',
+      fetchedAt: null,
+      error: errMsg,
+      errorType: errType,
+    }
   }
 }

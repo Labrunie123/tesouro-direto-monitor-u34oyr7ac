@@ -223,12 +223,13 @@ Deno.serve(async (req: Request) => {
           success: false,
           error: error.message,
           errorType: 'API_ERROR',
+          anbimaStatus: error.status,
           entries: [],
           date: null,
           fetchedAt: new Date().toISOString(),
           source: 'ANBIMA',
         },
-        error.status === 401 || error.status === 403 ? 401 : 502,
+        error.status >= 400 && error.status < 600 ? error.status : 502,
       )
     }
 
