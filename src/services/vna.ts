@@ -151,6 +151,13 @@ export async function fetchVnaFromSupabase(): Promise<VnaFetchResult> {
       const rawType = (errorBody?.errorType as string) || 'API_ERROR'
       lastErrorType = (ERROR_TYPE_MAP[rawType] || 'API_ERROR') as VnaErrorType
 
+      if (errorBody?.foundBonds) {
+        console.warn(
+          '[vna-service] Bonds found by ANBIMA but target not matched:',
+          errorBody.foundBonds,
+        )
+      }
+
       const formattedMsg = `Error ${status}: ${errMsg}`
 
       if (existingRows && existingRows.length > 0) {
@@ -177,6 +184,10 @@ export async function fetchVnaFromSupabase(): Promise<VnaFetchResult> {
       let errMsg = data?.error || 'Edge function returned failure'
       const rawType = (data?.errorType as string) || 'API_ERROR'
       lastErrorType = (ERROR_TYPE_MAP[rawType] || 'API_ERROR') as VnaErrorType
+
+      if (data?.foundBonds) {
+        console.warn('[vna-service] Bonds found by ANBIMA but target not matched:', data.foundBonds)
+      }
 
       throw new Error(errMsg)
     }

@@ -1,20 +1,19 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
+import { scrapeVnaFromAnbimaPage, type VnaEntry } from './html-scraper.ts'
 
 const ANBIMA_TOKEN_URL = 'https://api.anbima.com.br/oauth/access-token'
-const ANBIMA_VNA_URL =
-  'https://api-sandbox.anbima.com.br/feed/precos-indices/v1/titulos-publicos/vna'
+const ANBIMA_VNA_URL = 'https://api.anbima.com.br/feed/precos-indices/v1/titulos-publicos/vna'
 const FETCH_TIMEOUT_MS = 20000
 const TARGET_MATURITY_DATE = '2026-07-15'
-const TARGET_BOND_TYPE = 'NTN-B 2026-07-15'
+const TARGET_BOND_TYPE = 'NTN-B'
+const TARGET_BOND_LABEL = 'NTN-B 2026-07-15'
 
-interface VnaEntry {
-  code: string
-  title: string
-  vna: number
-  date: string
-  bondType: string
+interface FoundBondInfo {
+  tipo_titulo: string
+  data_vencimento: string
+  codigo_selic: string
 }
 
 function okResponse(body: Record<string, unknown>): Response {
@@ -54,6 +53,7 @@ function getMostRecentBusinessDay(): string {
 
 async function getAnbimaToken(clientId: string, clientSecret: string): Promise<string> {
   const credentials = btoa(`${clientId}:${clientSecret}`)
+  console.log('[fetch-vna-anbima] Requesting ANBIMA token from:', ANBIMA_TOKEN_URL)
   const response = await fetch(ANBIMA_TOKEN_URL, {
     method: 'POST',
     headers: {
@@ -88,12 +88,24 @@ async function getAnbimaToken(clientId: string, clientSecret: string): Promise<s
 
 function getMaturityDate(t: Record<string, unknown>): string | null {
   const raw =
-    t.data_vencimento || t.vencimento || t.maturity_date || t.due_date || t.data_maturidade
+    t.data_vencimento ||
+    t.data_validade ||
+    t.vencimento ||
+    t.maturity_date ||
+    t.due_date ||
+    t.data_maturidade
   if (!raw) return null
   return String(raw).split('T')[0]
 }
 
-function extractTitulosFromItem(item: Record<string, unknown>): VnaEntry[] {
+function getBondType(t: Record<string, unknown>): string {
+  return String(t.tipo_titulo || t.tipoTitulo || t.tipo || t.title_type || '').toUpperCase()
+}
+
+function extractTitulosFromItem(
+  item: Record<string, unknown>,
+  foundBonds: FoundBondInfo[],
+): VnaEntry[] {
   const entries: VnaEntry[] = []
   const parentRefDate = String(item.data_referencia || item.data || item.reference_date || '')
 
@@ -102,11 +114,21 @@ function extractTitulosFromItem(item: Record<string, unknown>): VnaEntry[] {
     for (const titulo of titulos) {
       const t = titulo as Record<string, unknown>
       const maturityDate = getMaturityDate(t)
+      const bondType = getBondType(t)
+      const selicCode = String(t.codigo_selic || t.code || t.codigo || '')
+
+      foundBonds.push({
+        tipo_titulo: bondType || 'UNKNOWN',
+        data_vencimento: maturityDate || 'UNKNOWN',
+        codigo_selic: selicCode,
+      })
+
       if (maturityDate !== TARGET_MATURITY_DATE) continue
+      if (bondType && bondType !== TARGET_BOND_TYPE) continue
 
       const vna = Number(t.vna || t.valor || 0)
-      const code = String(t.codigo_selic || t.code || t.codigo || '760199')
-      const title = String(t.titulo || t.title || t.nome_titulo || TARGET_BOND_TYPE)
+      const code = selicCode || '760199'
+      const title = String(t.titulo || t.title || t.nome_titulo || TARGET_BOND_LABEL)
       const entryDate = String(t.data_referencia || t.data || parentRefDate || '')
 
       if (vna > 0 && entryDate) {
@@ -115,17 +137,27 @@ function extractTitulosFromItem(item: Record<string, unknown>): VnaEntry[] {
           title,
           vna,
           date: entryDate.split('T')[0],
-          bondType: TARGET_BOND_TYPE,
+          bondType: TARGET_BOND_LABEL,
         })
       }
     }
   } else {
     const maturityDate = getMaturityDate(item)
+    const bondType = getBondType(item)
+    const selicCode = String(item.codigo_selic || item.code || item.codigo || '')
+
+    foundBonds.push({
+      tipo_titulo: bondType || 'UNKNOWN',
+      data_vencimento: maturityDate || 'UNKNOWN',
+      codigo_selic: selicCode,
+    })
+
     if (maturityDate !== TARGET_MATURITY_DATE) return entries
+    if (bondType && bondType !== TARGET_BOND_TYPE) return entries
 
     const vna = Number(item.vna || item.valor || 0)
-    const code = String(item.codigo_selic || item.code || item.codigo || '760199')
-    const title = String(item.titulo || item.title || item.nome_titulo || TARGET_BOND_TYPE)
+    const code = selicCode || '760199'
+    const title = String(item.titulo || item.title || item.nome_titulo || TARGET_BOND_LABEL)
 
     if (vna > 0 && parentRefDate) {
       entries.push({
@@ -133,7 +165,7 @@ function extractTitulosFromItem(item: Record<string, unknown>): VnaEntry[] {
         title,
         vna,
         date: parentRefDate.split('T')[0],
-        bondType: TARGET_BOND_TYPE,
+        bondType: TARGET_BOND_LABEL,
       })
     }
   }
@@ -141,7 +173,7 @@ function extractTitulosFromItem(item: Record<string, unknown>): VnaEntry[] {
   return entries
 }
 
-function parseAnbimaVna(data: unknown): VnaEntry[] {
+function parseAnbimaVna(data: unknown, foundBonds: FoundBondInfo[]): VnaEntry[] {
   const items: unknown[] = Array.isArray(data)
     ? data
     : ((data as Record<string, unknown>)?.data as unknown[]) ||
@@ -151,7 +183,7 @@ function parseAnbimaVna(data: unknown): VnaEntry[] {
   const entries: VnaEntry[] = []
   for (const item of items) {
     if (item && typeof item === 'object') {
-      entries.push(...extractTitulosFromItem(item as Record<string, unknown>))
+      entries.push(...extractTitulosFromItem(item as Record<string, unknown>, foundBonds))
     }
   }
   return entries
@@ -161,6 +193,7 @@ interface FetchResult {
   entries: VnaEntry[]
   status: number
   rawBody: string
+  foundBonds: FoundBondInfo[]
 }
 
 async function fetchVnaForDate(
@@ -169,6 +202,8 @@ async function fetchVnaForDate(
   date?: string,
 ): Promise<FetchResult> {
   const url = date ? `${ANBIMA_VNA_URL}?data_referencia=${date}` : ANBIMA_VNA_URL
+  const params = date ? { data_referencia: date } : {}
+  console.log('[fetch-vna-anbima] Fetching VNA from ANBIMA:', { url, params })
 
   const response = await fetch(url, {
     method: 'GET',
@@ -181,21 +216,33 @@ async function fetchVnaForDate(
   })
 
   const rawBody = await response.text().catch(() => '')
+  console.log(
+    '[fetch-vna-anbima] ANBIMA response status:',
+    response.status,
+    'for date:',
+    date || 'none',
+  )
 
   if (response.status === 401 || response.status === 403) {
     return {
       entries: [],
       status: response.status,
       rawBody: `ANBIMA VNA API unauthorized (${response.status}). Token may be invalid or expired. Response: ${rawBody}`,
+      foundBonds: [],
     }
   }
 
   if (response.status === 429) {
-    return { entries: [], status: 429, rawBody: 'ANBIMA VNA API rate limit exceeded.' }
+    return {
+      entries: [],
+      status: 429,
+      rawBody: 'ANBIMA VNA API rate limit exceeded.',
+      foundBonds: [],
+    }
   }
 
   if (!response.ok) {
-    return { entries: [], status: response.status, rawBody }
+    return { entries: [], status: response.status, rawBody, foundBonds: [] }
   }
 
   let data: unknown
@@ -206,18 +253,39 @@ async function fetchVnaForDate(
       entries: [],
       status: response.status,
       rawBody: `Parse error. Raw: ${rawBody.slice(0, 500)}`,
+      foundBonds: [],
     }
   }
 
-  return { entries: parseAnbimaVna(data), status: response.status, rawBody }
+  const foundBonds: FoundBondInfo[] = []
+  const entries = parseAnbimaVna(data, foundBonds)
+
+  if (entries.length === 0 && foundBonds.length > 0) {
+    console.warn(
+      '[fetch-vna-anbima] Target bond (NTN-B, maturity 2026-07-15) NOT found in response.',
+      'Bonds returned by ANBIMA:',
+      foundBonds.map((b) => `${b.tipo_titulo} (${b.data_vencimento}) [SELIC: ${b.codigo_selic}]`),
+    )
+  } else if (entries.length > 0) {
+    console.log('[fetch-vna-anbima] Target bond found! Entries:', entries.length)
+  }
+
+  return { entries, status: response.status, rawBody, foundBonds }
 }
 
 async function fetchVnaWithFallback(
   token: string,
   clientId: string,
-): Promise<{ entries: VnaEntry[]; triedDates: string[]; lastStatus: number; lastRawBody: string }> {
+): Promise<{
+  entries: VnaEntry[]
+  triedDates: string[]
+  lastStatus: number
+  lastRawBody: string
+  foundBonds: FoundBondInfo[]
+}> {
   const recentDate = getMostRecentBusinessDay()
   const triedDates: string[] = [recentDate]
+  console.log('[fetch-vna-anbima] Primary fetch for date:', recentDate)
   const latestResult = await fetchVnaForDate(token, clientId, recentDate)
 
   if (latestResult.entries.length > 0) {
@@ -226,28 +294,59 @@ async function fetchVnaWithFallback(
       triedDates,
       lastStatus: latestResult.status,
       lastRawBody: latestResult.rawBody,
+      foundBonds: latestResult.foundBonds,
     }
   }
 
   if (latestResult.status !== 200) {
+    if (latestResult.status === 401 || latestResult.status === 403) {
+      console.log(
+        '[fetch-vna-anbima] API returned',
+        latestResult.status,
+        '- trying HTML scraping fallback',
+      )
+      try {
+        const scraped = await scrapeVnaFromAnbimaPage(TARGET_BOND_TYPE, TARGET_MATURITY_DATE)
+        if (scraped.length > 0) {
+          console.log(
+            '[fetch-vna-anbima] HTML scraping fallback succeeded with',
+            scraped.length,
+            'entries',
+          )
+          return {
+            entries: scraped,
+            triedDates,
+            lastStatus: 200,
+            lastRawBody: 'HTML scraping fallback succeeded',
+            foundBonds: [],
+          }
+        }
+      } catch (e) {
+        console.warn('[fetch-vna-anbima] HTML scraping fallback failed:', e)
+      }
+    }
     return {
       entries: [],
       triedDates,
       lastStatus: latestResult.status,
       lastRawBody: latestResult.rawBody,
+      foundBonds: latestResult.foundBonds,
     }
   }
 
   const dates = getLast5BusinessDays()
   let lastStatus = latestResult.status
   let lastRawBody = latestResult.rawBody
+  let allFoundBonds = [...latestResult.foundBonds]
 
   for (const date of dates) {
     if (triedDates.includes(date)) continue
     triedDates.push(date)
+    console.log('[fetch-vna-anbima] Fallback fetch for date:', date)
     const dateResult = await fetchVnaForDate(token, clientId, date)
     lastStatus = dateResult.status
     lastRawBody = dateResult.rawBody
+    allFoundBonds = [...allFoundBonds, ...dateResult.foundBonds]
 
     if (dateResult.entries.length > 0) {
       return {
@@ -255,6 +354,7 @@ async function fetchVnaWithFallback(
         triedDates,
         lastStatus: dateResult.status,
         lastRawBody: dateResult.rawBody,
+        foundBonds: allFoundBonds,
       }
     }
 
@@ -264,11 +364,45 @@ async function fetchVnaWithFallback(
         triedDates,
         lastStatus: dateResult.status,
         lastRawBody: dateResult.rawBody,
+        foundBonds: allFoundBonds,
       }
     }
   }
 
-  return { entries: [], triedDates, lastStatus, lastRawBody }
+  if (allFoundBonds.length > 0) {
+    console.warn(
+      '[fetch-vna-anbima] Target bond NOT found across all attempted dates.',
+      'Dates tried:',
+      triedDates.join(', '),
+      'All bonds found:',
+      allFoundBonds.map(
+        (b) => `${b.tipo_titulo} (${b.data_vencimento}) [SELIC: ${b.codigo_selic}]`,
+      ),
+    )
+  }
+
+  console.log('[fetch-vna-anbima] Trying HTML scraping as final fallback')
+  try {
+    const scraped = await scrapeVnaFromAnbimaPage(TARGET_BOND_TYPE, TARGET_MATURITY_DATE)
+    if (scraped.length > 0) {
+      console.log(
+        '[fetch-vna-anbima] HTML scraping final fallback succeeded with',
+        scraped.length,
+        'entries',
+      )
+      return {
+        entries: scraped,
+        triedDates,
+        lastStatus: 200,
+        lastRawBody: 'HTML scraping fallback succeeded',
+        foundBonds: allFoundBonds,
+      }
+    }
+  } catch (e) {
+    console.warn('[fetch-vna-anbima] HTML scraping final fallback failed:', e)
+  }
+
+  return { entries: [], triedDates, lastStatus, lastRawBody, foundBonds: allFoundBonds }
 }
 
 async function insertVnaHistory(entries: VnaEntry[]): Promise<void> {
@@ -281,19 +415,23 @@ async function insertVnaHistory(entries: VnaEntry[]): Promise<void> {
     .map((e) => ({
       reference_date: e.date,
       vna_value: e.vna,
-      bond_type: e.bondType || TARGET_BOND_TYPE,
+      bond_type: e.bondType || TARGET_BOND_LABEL,
     }))
 
   if (rows.length === 0) return
 
+  console.log('[fetch-vna-anbima] Inserting/updating VNA rows:', rows.length, rows)
+
   const { error } = await supabase.from('vna_history').upsert(rows, {
     onConflict: 'reference_date,bond_type',
-    ignoreDuplicates: true,
+    ignoreDuplicates: false,
   })
 
   if (error) {
     throw new Error(`Database error during VNA persistence: ${error.message}`)
   }
+
+  console.log('[fetch-vna-anbima] VNA rows persisted successfully')
 }
 
 Deno.serve(async (req: Request) => {
@@ -319,17 +457,28 @@ Deno.serve(async (req: Request) => {
       })
     }
 
+    console.log('[fetch-vna-anbima] Starting VNA fetch for NTN-B maturity:', TARGET_MATURITY_DATE)
+
     const token = await getAnbimaToken(clientId, clientSecret)
-    const { entries, triedDates, lastStatus, lastRawBody } = await fetchVnaWithFallback(
+    const { entries, triedDates, lastStatus, lastRawBody, foundBonds } = await fetchVnaWithFallback(
       token,
       clientId,
     )
 
     if (entries.length === 0) {
       const isApiError = lastStatus !== 200
+      const foundBondsSummary =
+        foundBonds.length > 0
+          ? foundBonds
+              .map(
+                (b) => `${b.tipo_titulo} (venc: ${b.data_vencimento}) [SELIC: ${b.codigo_selic}]`,
+              )
+              .join('; ')
+          : 'No bonds returned by API'
+
       const errorMsg = isApiError
         ? `ANBIMA VNA API returned HTTP ${lastStatus}. Raw response: ${lastRawBody.slice(0, 500)}`
-        : `No bond with maturity date ${TARGET_MATURITY_DATE} (${TARGET_BOND_TYPE}) was found in the ANBIMA API response for the most recent dates. Dates attempted: ${triedDates.join(', ')}. The bond may not have been issued yet or the API response structure may have changed. Last raw response (truncated): ${lastRawBody.slice(0, 500)}`
+        : `No bond with tipo_titulo=NTN-B and maturity date ${TARGET_MATURITY_DATE} (${TARGET_BOND_LABEL}) was found in the ANBIMA API response for dates: ${triedDates.join(', ')}. Bonds found in response: ${foundBondsSummary}. Last raw response (truncated): ${lastRawBody.slice(0, 500)}`
 
       return okResponse({
         success: false,
@@ -340,14 +489,19 @@ Deno.serve(async (req: Request) => {
         fetchedAt: new Date().toISOString(),
         source: 'ANBIMA',
         triedDates,
-        targetBond: TARGET_BOND_TYPE,
+        targetBond: TARGET_BOND_LABEL,
         targetMaturity: TARGET_MATURITY_DATE,
+        foundBonds: foundBonds.map((b) => ({
+          tipo_titulo: b.tipo_titulo,
+          data_vencimento: b.data_vencimento,
+          codigo_selic: b.codigo_selic,
+        })),
       })
     }
 
     await insertVnaHistory(entries)
 
-    const target = entries.find((e) => e.bondType === TARGET_BOND_TYPE) || entries[0]
+    const target = entries.find((e) => e.bondType === TARGET_BOND_LABEL) || entries[0]
 
     return okResponse({
       success: true,
@@ -355,8 +509,9 @@ Deno.serve(async (req: Request) => {
       date: target.date,
       fetchedAt: new Date().toISOString(),
       source: 'ANBIMA',
-      targetBond: TARGET_BOND_TYPE,
+      targetBond: TARGET_BOND_LABEL,
       targetMaturity: TARGET_MATURITY_DATE,
+      triedDates,
     })
   } catch (error) {
     let errorType = 'UNKNOWN_ERROR'
@@ -394,6 +549,28 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    console.error('[fetch-vna-anbima] Error:', errorType, userMessage)
+
+    try {
+      const scraped = await scrapeVnaFromAnbimaPage(TARGET_BOND_TYPE, TARGET_MATURITY_DATE)
+      if (scraped.length > 0) {
+        await insertVnaHistory(scraped)
+        const target = scraped[0]
+        return okResponse({
+          success: true,
+          entries: scraped,
+          date: target.date,
+          fetchedAt: new Date().toISOString(),
+          source: 'ANBIMA-HTML-Scrape',
+          targetBond: TARGET_BOND_LABEL,
+          targetMaturity: TARGET_MATURITY_DATE,
+          triedDates: [],
+        })
+      }
+    } catch (e) {
+      console.warn('[fetch-vna-anbima] HTML scraping in catch block failed:', e)
+    }
+
     return okResponse({
       success: false,
       error: userMessage,
@@ -402,7 +579,7 @@ Deno.serve(async (req: Request) => {
       date: null,
       fetchedAt: new Date().toISOString(),
       source: 'ANBIMA',
-      targetBond: TARGET_BOND_TYPE,
+      targetBond: TARGET_BOND_LABEL,
       targetMaturity: TARGET_MATURITY_DATE,
     })
   }

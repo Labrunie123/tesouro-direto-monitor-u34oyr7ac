@@ -7,11 +7,13 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { fetchVnaHistory, VnaHistoryRow } from '@/services/vna'
 import { formatVnaCurrency, formatDate } from '@/lib/formatters'
+import usePortfolioStore from '@/stores/usePortfolioStore'
 
 export function VnaHistoryChart() {
   const [history, setHistory] = useState<VnaHistoryRow[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const { vnaLastSync } = usePortfolioStore()
 
   const loadHistory = useCallback(async () => {
     try {
@@ -28,7 +30,7 @@ export function VnaHistoryChart() {
 
   useEffect(() => {
     loadHistory()
-  }, [loadHistory])
+  }, [loadHistory, vnaLastSync])
 
   const chartData = history.map((row) => ({
     date: formatDate(row.reference_date),
