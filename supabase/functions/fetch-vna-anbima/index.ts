@@ -9,6 +9,7 @@ const FETCH_TIMEOUT_MS = 20000
 const TARGET_MATURITY_DATE = '2026-07-15'
 const TARGET_BOND_TYPE = 'NTN-B'
 const TARGET_BOND_LABEL = 'NTN-B 2026-07-15'
+const TARGET_SELIC_CODES = ['760100', '760199']
 
 interface FoundBondInfo {
   tipo_titulo: string
@@ -68,8 +69,14 @@ async function getAnbimaToken(clientId: string, clientSecret: string): Promise<s
     const text = await response.text().catch(() => '')
     const status = response.status
     if (status === 401 || status === 403) {
+      console.error(
+        `[fetch-vna-anbima] ANBIMA token endpoint returned ${status}. ` +
+          `The Client ID or Client Secret is invalid. ` +
+          `Please verify ANBIMA_Client_ID and ANBIMA_Client_Secret in Supabase Secrets. ` +
+          `Response: ${text.slice(0, 500)}`,
+      )
       throw new Error(
-        `ANBIMA authentication unauthorized (${status}). Verify ANBIMA_Client_ID and ANBIMA_Client_Secret. ANBIMA response: ${text}`,
+        `ANBIMA authentication unauthorized (${status}). The Client ID or Client Secret is invalid. Verify ANBIMA_Client_ID and ANBIMA_Client_Secret in Supabase Secrets. ANBIMA response: ${text}`,
       )
     }
     if (status === 429) {
@@ -123,8 +130,10 @@ function extractTitulosFromItem(
         codigo_selic: selicCode,
       })
 
-      if (maturityDate !== TARGET_MATURITY_DATE) continue
-      if (bondType && bondType !== TARGET_BOND_TYPE) continue
+      const matchesSelic = TARGET_SELIC_CODES.includes(selicCode)
+      const matchesMaturity = maturityDate === TARGET_MATURITY_DATE
+      if (!matchesSelic && !matchesMaturity) continue
+      if (bondType && bondType !== TARGET_BOND_TYPE && !matchesSelic) continue
 
       const vna = Number(t.vna || t.valor || 0)
       const code = selicCode || '760199'
@@ -152,8 +161,10 @@ function extractTitulosFromItem(
       codigo_selic: selicCode,
     })
 
-    if (maturityDate !== TARGET_MATURITY_DATE) return entries
-    if (bondType && bondType !== TARGET_BOND_TYPE) return entries
+    const matchesSelicNonArray = TARGET_SELIC_CODES.includes(selicCode)
+    const matchesMaturityNonArray = maturityDate === TARGET_MATURITY_DATE
+    if (!matchesSelicNonArray && !matchesMaturityNonArray) return entries
+    if (bondType && bondType !== TARGET_BOND_TYPE && !matchesSelicNonArray) return entries
 
     const vna = Number(item.vna || item.valor || 0)
     const code = selicCode || '760199'
@@ -202,35 +213,93 @@ async function fetchVnaForDate(
   date?: string,
 ): Promise<FetchResult> {
   const url = date ? `${ANBIMA_VNA_URL}?data_referencia=${date}` : ANBIMA_VNA_URL
-  const params = date ? { data_referencia: date } : {}
-  console.log('[fetch-vna-anbima] Fetching VNA from ANBIMA:', { url, params })
+  console.log('[fetch-vna-anbima] Fetching VNA from ANBIMA:', { url, date: date || 'none' })
 
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
+  const headerVariants = [
+    {
       client_id: clientId,
       access_token: token,
       'Content-Type': 'application/json',
+      Accept: 'application/json',
     },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  })
+    {
+      Authorization: `Bearer ${token}`,
+      client_id: clientId,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+  ]
 
-  const rawBody = await response.text().catch(() => '')
-  console.log(
-    '[fetch-vna-anbima] ANBIMA response status:',
-    response.status,
-    'for date:',
-    date || 'none',
-  )
+  let response: Response | null = null
+  let rawBody = ''
+  let variantUsed = 0
+  let lastErrorStatus = 0
+  let lastErrorBody = ''
 
-  if (response.status === 401 || response.status === 403) {
+  for (let i = 0; i < headerVariants.length; i++) {
+    try {
+      console.log(`[fetch-vna-anbima] Trying header variant ${i + 1}/${headerVariants.length}`)
+      const resp = await fetch(url, {
+        method: 'GET',
+        headers: headerVariants[i],
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      })
+      variantUsed = i + 1
+
+      if (resp.status === 401 || resp.status === 403) {
+        lastErrorBody = await resp.text().catch(() => '')
+        lastErrorStatus = resp.status
+        console.warn(
+          `[fetch-vna-anbima] Variant ${i + 1} returned ${resp.status}. ` +
+            `This typically indicates invalid or expired ANBIMA Client ID/Secret credentials. ` +
+            `Please verify ANBIMA_Client_ID and ANBIMA_Client_Secret in Supabase Secrets. ` +
+            `Response: ${lastErrorBody.slice(0, 300)}`,
+        )
+        continue
+      }
+
+      response = resp
+      break
+    } catch (e) {
+      console.warn(`[fetch-vna-anbima] Variant ${i + 1} threw:`, e)
+      continue
+    }
+  }
+
+  if (!response) {
+    if (lastErrorStatus > 0) {
+      const credHint =
+        lastErrorStatus === 401 || lastErrorStatus === 403
+          ? ` ANBIMA credentials (ANBIMA_Client_ID / ANBIMA_Client_Secret) appear to be invalid or expired. Please verify them in Supabase Project Secrets.`
+          : ''
+      return {
+        entries: [],
+        status: lastErrorStatus,
+        rawBody: `ANBIMA VNA API unauthorized (${lastErrorStatus}) after ${variantUsed} header variants.${credHint} Response: ${lastErrorBody}`,
+        foundBonds: [],
+      }
+    }
     return {
       entries: [],
-      status: response.status,
-      rawBody: `ANBIMA VNA API unauthorized (${response.status}). Token may be invalid or expired. Response: ${rawBody}`,
+      status: 500,
+      rawBody: 'All header variants failed with network errors',
       foundBonds: [],
     }
   }
+
+  rawBody = await response.text().catch(() => '')
+  console.log(
+    '[fetch-vna-anbima] ANBIMA response status:',
+    response.status,
+    '(variant',
+    variantUsed + ', date:',
+    date || 'none' + ')',
+  )
 
   if (response.status === 429) {
     return {
@@ -262,12 +331,16 @@ async function fetchVnaForDate(
 
   if (entries.length === 0 && foundBonds.length > 0) {
     console.warn(
-      '[fetch-vna-anbima] Target bond (NTN-B, maturity 2026-07-15) NOT found in response.',
+      '[fetch-vna-anbima] Target bond (NTN-B, maturity 2026-07-15, SELIC 760100/760199) NOT found in response.',
       'Bonds returned by ANBIMA:',
       foundBonds.map((b) => `${b.tipo_titulo} (${b.data_vencimento}) [SELIC: ${b.codigo_selic}]`),
     )
   } else if (entries.length > 0) {
-    console.log('[fetch-vna-anbima] Target bond found! Entries:', entries.length)
+    console.log(
+      '[fetch-vna-anbima] Target bond found! Entries:',
+      entries.length,
+      'Matched by SELIC code or maturity date.',
+    )
   }
 
   return { entries, status: response.status, rawBody, foundBonds }
@@ -424,7 +497,7 @@ async function insertVnaHistory(entries: VnaEntry[]): Promise<void> {
 
   const { error } = await supabase.from('vna_history').upsert(rows, {
     onConflict: 'reference_date,bond_type',
-    ignoreDuplicates: false,
+    ignoreDuplicates: true,
   })
 
   if (error) {
@@ -440,9 +513,14 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const clientId = Deno.env.get('ANBIMA_CLIENT_ID') || Deno.env.get('ANBIMA_Client_ID')
+    const clientId =
+      Deno.env.get('ANBIMA_CLIENT_ID') ||
+      Deno.env.get('ANBIMA_Client_ID') ||
+      Deno.env.get('ANDIMA_Client_ID')
     const clientSecret =
-      Deno.env.get('ANBIMA_CLIENT_SECRET') || Deno.env.get('ANBIMA_Client_Secret')
+      Deno.env.get('ANBIMA_CLIENT_SECRET') ||
+      Deno.env.get('ANBIMA_Client_Secret') ||
+      Deno.env.get('ANDIMA_Client_Secret')
 
     if (!clientId || !clientSecret) {
       return okResponse({
@@ -477,7 +555,9 @@ Deno.serve(async (req: Request) => {
           : 'No bonds returned by API'
 
       const errorMsg = isApiError
-        ? `ANBIMA VNA API returned HTTP ${lastStatus}. Raw response: ${lastRawBody.slice(0, 500)}`
+        ? lastStatus === 401 || lastStatus === 403
+          ? `ANBIMA API authentication failed (HTTP ${lastStatus}). Please verify that ANBIMA_Client_ID and ANBIMA_Client_Secret are valid and correctly configured in Supabase Secrets. Response: ${lastRawBody.slice(0, 300)}`
+          : `ANBIMA VNA API returned HTTP ${lastStatus}. Raw response: ${lastRawBody.slice(0, 500)}`
         : `No bond with tipo_titulo=NTN-B and maturity date ${TARGET_MATURITY_DATE} (${TARGET_BOND_LABEL}) was found in the ANBIMA API response for dates: ${triedDates.join(', ')}. Bonds found in response: ${foundBondsSummary}. Last raw response (truncated): ${lastRawBody.slice(0, 500)}`
 
       return okResponse({

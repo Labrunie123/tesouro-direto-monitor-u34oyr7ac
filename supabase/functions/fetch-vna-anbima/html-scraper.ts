@@ -1,6 +1,9 @@
 const ANBIMA_VNA_URLS = [
   'https://www.anbima.com.br/pt_br/informar/vna.asp',
   'https://www.anbima.com.br/informacoes/vna/vna.asp',
+  'https://www.anbima.com.br/pt_br/informar/vna',
+  'https://www.anbima.com.br/informacoes/vna/',
+  'https://www.anbima.com.br/pt-br/informar/vna',
 ]
 const FETCH_TIMEOUT_MS = 20000
 const TARGET_BOND_LABEL = 'NTN-B 2026-07-15'
@@ -25,12 +28,45 @@ function parseBRDate(s: string): string | null {
   return m ? `${m[3]}-${m[2]}-${m[1]}` : null
 }
 
+function parseISODate(s: string): string | null {
+  const m = s.match(/(\d{4})-(\d{2})-(\d{2})/)
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null
+}
+
 function stripHtml(h: string): string {
   return h
     .replace(/<[^>]*>/g, ' ')
     .replace(/&nbsp;/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+function extractBalancedJson(str: string, start: number): string | null {
+  let depth = 0
+  let inStr = false
+  let esc = false
+  for (let i = start; i < str.length; i++) {
+    const ch = str[i]
+    if (esc) {
+      esc = false
+      continue
+    }
+    if (ch === '\\') {
+      esc = true
+      continue
+    }
+    if (ch === '"') {
+      inStr = !inStr
+      continue
+    }
+    if (inStr) continue
+    if (ch === '{') depth++
+    else if (ch === '}') {
+      depth--
+      if (depth === 0) return str.slice(start, i + 1)
+    }
+  }
+  return null
 }
 
 function extractRows(html: string): string[][] {
@@ -46,38 +82,28 @@ function extractRows(html: string): string[][] {
   return rows
 }
 
-function tryJson(html: string, bt: string, mat: string): VnaEntry[] {
-  const patterns = [
-    /window\.__DATA__\s*=\s*(\{[\s\S]*?\});/i,
-    /window\.__NUXT__\s*=\s*(\{[\s\S]*?\});/i,
-    /window\.__INITIAL_STATE__\s*=\s*(\{[\s\S]*?\});/i,
-    /__NEXT_DATA__"[^>]*>(\{[\s\S]*?\})<\/script>/i,
-  ]
-  for (const p of patterns) {
-    const m = html.match(p)
-    if (m) {
-      try {
-        return jsonSearch(JSON.parse(m[1]), bt, mat)
-      } catch {
-        /* continue */
-      }
-    }
-  }
-  return []
-}
-
 function jsonSearch(d: unknown, bt: string, mat: string): VnaEntry[] {
   const res: VnaEntry[] = []
+  const dBR = mat.split('-').reverse().join('/')
   const walk = (o: unknown) => {
     if (res.length || !o || typeof o !== 'object') return
     if (Array.isArray(o)) return o.forEach(walk)
     const r = o as Record<string, unknown>
-    const type = String(r.tipo_titulo || r.tipoTitulo || r.tipo || '').toUpperCase()
-    const maturity = String(r.data_vencimento || r.vencimento || r.maturity || '').split('T')[0]
-    if (type.includes(bt) && maturity === mat && r.vna) {
-      const vna = Number(r.vna)
+    const type = String(r.tipo_titulo || r.tipoTitulo || r.tipo || r.type || '').toUpperCase()
+    const maturity = String(
+      r.data_vencimento || r.vencimento || r.maturity || r.maturity_date || r.data_validade || '',
+    ).split('T')[0]
+    const hasVna = r.vna ?? r.valor ?? r.value
+    if (
+      type.includes(bt) &&
+      (maturity === mat || maturity.includes(dBR) || maturity.includes(mat.replace(/-/g, '/'))) &&
+      hasVna
+    ) {
+      const vna = Number(hasVna)
       if (vna > 0) {
-        const refDate = String(r.data_referencia || r.data || '').split('T')[0]
+        const refDate = String(
+          r.data_referencia || r.data || r.reference_date || r.date || '',
+        ).split('T')[0]
         res.push({
           code: '760199',
           title: TARGET_BOND_LABEL,
@@ -93,16 +119,67 @@ function jsonSearch(d: unknown, bt: string, mat: string): VnaEntry[] {
   return res
 }
 
+function tryJsonStr(jsonStr: string, bt: string, mat: string, label: string): VnaEntry[] {
+  try {
+    const result = jsonSearch(JSON.parse(jsonStr.trim()), bt, mat)
+    if (result.length) console.log(`[html-scraper] Found via ${label}`)
+    return result
+  } catch {
+    return []
+  }
+}
+
+function tryEmbeddedJson(html: string, bt: string, mat: string): VnaEntry[] {
+  const nextMatch = html.match(/__NEXT_DATA__[^>]*>([\s\S]*?)<\/script>/i)
+  if (nextMatch) {
+    const r = tryJsonStr(nextMatch[1], bt, mat, '__NEXT_DATA__')
+    if (r.length) return r
+  }
+
+  const assignPatterns = [
+    /window\.__DATA__\s*=\s*/i,
+    /window\.__NUXT__\s*=\s*/i,
+    /window\.__INITIAL_STATE__\s*=\s*/i,
+    /window\.__APOLLO_STATE__\s*=\s*/i,
+    /window\.__APP_DATA__\s*=\s*/i,
+  ]
+  for (const p of assignPatterns) {
+    const m = html.match(p)
+    if (m && m.index !== undefined) {
+      const braceIdx = html.indexOf('{', m.index + m[0].length)
+      if (braceIdx !== -1) {
+        const jsonStr = extractBalancedJson(html, braceIdx)
+        if (jsonStr) {
+          const r = tryJsonStr(jsonStr, bt, mat, m[0].trim())
+          if (r.length) return r
+        }
+      }
+    }
+  }
+
+  for (const m of html.matchAll(
+    /<script[^>]*type=["']application\/(?:ld\+)?json["'][^>]*>([\s\S]*?)<\/script>/gi,
+  )) {
+    const r = tryJsonStr(m[1], bt, mat, 'JSON script tag')
+    if (r.length) return r
+  }
+
+  return []
+}
+
 function fromTables(rows: string[][], bt: string, mat: string): VnaEntry[] {
   const entries: VnaEntry[] = []
   const dBR = mat.split('-').reverse().join('/')
   for (const cells of rows) {
     if (!cells.join(' ').toUpperCase().includes(bt)) continue
-    if (!cells.some((c) => c.includes(mat) || c.includes(dBR))) continue
+    if (
+      !cells.some((c) => c.includes(mat) || c.includes(dBR) || c.includes(mat.replace(/-/g, '/')))
+    )
+      continue
     let vna = 0,
       dt = ''
     for (const c of cells) {
-      const pd = parseBRDate(c)
+      const pd = parseBRDate(c) || parseISODate(c)
       if (pd && !dt) dt = pd
       const nm = c.match(/[\d.]+,\d+/)
       if (nm) {
@@ -110,7 +187,7 @@ function fromTables(rows: string[][], bt: string, mat: string): VnaEntry[] {
         if (p > 100) vna = p
       }
     }
-    if (vna > 0) {
+    if (vna > 0)
       entries.push({
         code: '760199',
         title: TARGET_BOND_LABEL,
@@ -118,7 +195,6 @@ function fromTables(rows: string[][], bt: string, mat: string): VnaEntry[] {
         date: dt || new Date().toISOString().split('T')[0],
         bondType: TARGET_BOND_LABEL,
       })
-    }
   }
   return entries
 }
@@ -128,7 +204,7 @@ async function tryFetch(url: string, method: string, body?: string): Promise<str
     const headers: Record<string, string> = {
       'User-Agent':
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      Accept: 'text/html,application/xhtml+xml',
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
     }
     if (body) headers['Content-Type'] = 'application/x-www-form-urlencoded'
@@ -164,11 +240,8 @@ export async function scrapeVnaFromAnbimaPage(
       if (!html) continue
       console.log('[html-scraper] Fetched', url, method, 'length:', html.length)
 
-      const jsonEntries = tryJson(html, bondType, maturity)
-      if (jsonEntries.length > 0) {
-        console.log('[html-scraper] Found via JSON extraction:', jsonEntries.length)
-        return jsonEntries
-      }
+      const jsonEntries = tryEmbeddedJson(html, bondType, maturity)
+      if (jsonEntries.length > 0) return jsonEntries
 
       const tableEntries = fromTables(extractRows(html), bondType, maturity)
       if (tableEntries.length > 0) {
