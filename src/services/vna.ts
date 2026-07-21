@@ -4,7 +4,7 @@ import type { VnaEntry, VnaFetchResult, VnaErrorType } from '@/lib/vna-service'
 
 const TARGET_BOND_TYPE = 'NTN-B 2026-07-15'
 const TARGET_MATURITY_DATE = '2026-07-15'
-const TARGET_SELIC_CODE = '760199'
+const TARGET_SELIC_CODE = '760100'
 const FETCH_CACHE_KEY = '@tesouro-vision:vna-fetch-cache'
 const FETCH_DATE_KEY = '@tesouro-vision:vna-fetch-date'
 const FETCH_SYNC_KEY = '@tesouro-vision:vna-fetch-sync'

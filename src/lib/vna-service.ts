@@ -41,15 +41,17 @@ const todayStr = () => new Date().toISOString().split('T')[0]
 
 export const DEFAULT_VNA_DATA: VnaEntry[] = [
   {
-    code: '760199',
+    code: '760100',
     title: `NTN-B ${TARGET_MATURITY_DATE}`,
-    vna: 2856.732451,
+    vna: 4757.829461,
     date: todayStr(),
   },
 ]
 
 export function findVnaForTitle(entries: VnaEntry[], title: string): number | null {
-  const targetEntry = entries.find((e) => e.title.includes(TARGET_MATURITY_DATE) && e.vna > 0)
+  const targetEntry = entries.find(
+    (e) => (e.title.includes(TARGET_MATURITY_DATE) || e.code === '760100') && e.vna > 0,
+  )
   if (targetEntry) return targetEntry.vna
 
   if (title.includes('2026')) {

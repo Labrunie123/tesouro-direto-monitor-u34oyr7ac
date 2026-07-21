@@ -55,42 +55,95 @@ function getMostRecentBusinessDay(): string {
 async function getAnbimaToken(clientId: string, clientSecret: string): Promise<string> {
   const credentials = btoa(`${clientId}:${clientSecret}`)
   console.log('[fetch-vna-anbima] Requesting ANBIMA token from:', ANBIMA_TOKEN_URL)
-  const response = await fetch(ANBIMA_TOKEN_URL, {
-    method: 'POST',
-    headers: {
+
+  const headerVariants = [
+    {
+      client_id: clientId,
+      client_secret: clientSecret,
       'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
       Authorization: `Basic ${credentials}`,
     },
-    body: JSON.stringify({ grant_type: 'client_credentials' }),
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  })
+    {
+      client_id: clientId,
+      client_secret: clientSecret,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
+    },
+  ]
 
-  if (!response.ok) {
-    const text = await response.text().catch(() => '')
-    const status = response.status
-    if (status === 401 || status === 403) {
-      console.error(
-        `[fetch-vna-anbima] ANBIMA token endpoint returned ${status}. ` +
-          `The Client ID or Client Secret is invalid. ` +
-          `Please verify ANBIMA_Client_ID and ANBIMA_Client_Secret in Supabase Secrets. ` +
-          `Response: ${text.slice(0, 500)}`,
-      )
-      throw new Error(
-        `ANBIMA authentication unauthorized (${status}). The Client ID or Client Secret is invalid. Verify ANBIMA_Client_ID and ANBIMA_Client_Secret in Supabase Secrets. ANBIMA response: ${text}`,
-      )
+  const bodyVariants = [
+    JSON.stringify({ grant_type: 'client_credentials' }),
+    'grant_type=client_credentials',
+  ]
+
+  let lastErrorStatus = 0
+  let lastErrorBody = ''
+
+  for (let i = 0; i < headerVariants.length; i++) {
+    for (let j = 0; j < bodyVariants.length; j++) {
+      try {
+        const contentType = headerVariants[i]['Content-Type'] as string
+        console.log(
+          `[fetch-vna-anbima] Trying token variant ${i + 1}.${j + 1} ` +
+            `(auth: ${i === 0 ? 'Sensedia-headers' : i === 1 ? 'Basic' : 'Sensedia-form'}, ` +
+            `body: ${j === 0 ? 'json' : 'form'})`,
+        )
+        const resp = await fetch(ANBIMA_TOKEN_URL, {
+          method: 'POST',
+          headers: headerVariants[i],
+          body: bodyVariants[j],
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        })
+
+        if (resp.status === 401 || resp.status === 403) {
+          lastErrorBody = await resp.text().catch(() => '')
+          lastErrorStatus = resp.status
+          console.warn(
+            `[fetch-vna-anbima] Token variant ${i + 1}.${j + 1} returned ${resp.status}. ` +
+              `Response: ${lastErrorBody.slice(0, 300)}`,
+          )
+          continue
+        }
+
+        if (!resp.ok) {
+          lastErrorBody = await resp.text().catch(() => '')
+          lastErrorStatus = resp.status
+          console.warn(
+            `[fetch-vna-anbima] Token variant ${i + 1}.${j + 1} returned ${resp.status}.`,
+          )
+          continue
+        }
+
+        const data = await resp.json()
+        if (data.access_token) {
+          console.log(`[fetch-vna-anbima] Token obtained via variant ${i + 1}.${j + 1}`)
+          return data.access_token as string
+        }
+        if (data.access_token === undefined && data.token) {
+          console.log(
+            `[fetch-vna-anbima] Token obtained via variant ${i + 1}.${j + 1} (token field)`,
+          )
+          return data.token as string
+        }
+      } catch (e) {
+        console.warn(`[fetch-vna-anbima] Token variant ${i + 1}.${j + 1} threw:`, e)
+      }
     }
-    if (status === 429) {
-      throw new Error('ANBIMA auth rate limit exceeded. Please try again later.')
-    }
-    throw new Error(`ANBIMA auth request failed (HTTP ${status}): ${text}`)
   }
 
-  const data = await response.json()
-  if (!data.access_token) {
-    throw new Error('ANBIMA auth succeeded but no access_token was returned')
-  }
+  const credHint =
+    lastErrorStatus === 401 || lastErrorStatus === 403
+      ? ' ANBIMA credentials (ANBIMA_Client_ID / ANBIMA_Client_Secret) appear to be invalid or expired. Please verify them in Supabase Project Secrets.'
+      : ''
 
-  return data.access_token as string
+  throw new Error(
+    `ANBIMA authentication failed (HTTP ${lastErrorStatus}).${credHint} Response: ${lastErrorBody.slice(0, 500)}`,
+  )
 }
 
 function getMaturityDate(t: Record<string, unknown>): string | null {
@@ -136,7 +189,7 @@ function extractTitulosFromItem(
       if (bondType && bondType !== TARGET_BOND_TYPE && !matchesSelic) continue
 
       const vna = Number(t.vna || t.valor || 0)
-      const code = selicCode || '760199'
+      const code = selicCode || '760100'
       const title = String(t.titulo || t.title || t.nome_titulo || TARGET_BOND_LABEL)
       const entryDate = String(t.data_referencia || t.data || parentRefDate || '')
 
@@ -167,7 +220,7 @@ function extractTitulosFromItem(
     if (bondType && bondType !== TARGET_BOND_TYPE && !matchesSelicNonArray) return entries
 
     const vna = Number(item.vna || item.valor || 0)
-    const code = selicCode || '760199'
+    const code = selicCode || '760100'
     const title = String(item.titulo || item.title || item.nome_titulo || TARGET_BOND_LABEL)
 
     if (vna > 0 && parentRefDate) {
@@ -217,8 +270,8 @@ async function fetchVnaForDate(
 
   const headerVariants = [
     {
-      client_id: clientId,
       access_token: token,
+      client_id: clientId,
       'Content-Type': 'application/json',
       Accept: 'application/json',
     },
@@ -229,8 +282,8 @@ async function fetchVnaForDate(
       Accept: 'application/json',
     },
     {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      access_token: token,
+      client_id: clientId,
       Accept: 'application/json',
     },
   ]
@@ -243,7 +296,10 @@ async function fetchVnaForDate(
 
   for (let i = 0; i < headerVariants.length; i++) {
     try {
-      console.log(`[fetch-vna-anbima] Trying header variant ${i + 1}/${headerVariants.length}`)
+      console.log(
+        `[fetch-vna-anbima] Trying header variant ${i + 1}/${headerVariants.length} ` +
+          `(${i === 0 ? 'access_token+client_id' : i === 1 ? 'Bearer+client_id' : 'access_token+client_id(no-ct)'})`,
+      )
       const resp = await fetch(url, {
         method: 'GET',
         headers: headerVariants[i],
@@ -256,8 +312,6 @@ async function fetchVnaForDate(
         lastErrorStatus = resp.status
         console.warn(
           `[fetch-vna-anbima] Variant ${i + 1} returned ${resp.status}. ` +
-            `This typically indicates invalid or expired ANBIMA Client ID/Secret credentials. ` +
-            `Please verify ANBIMA_Client_ID and ANBIMA_Client_Secret in Supabase Secrets. ` +
             `Response: ${lastErrorBody.slice(0, 300)}`,
         )
         continue
@@ -275,7 +329,7 @@ async function fetchVnaForDate(
     if (lastErrorStatus > 0) {
       const credHint =
         lastErrorStatus === 401 || lastErrorStatus === 403
-          ? ` ANBIMA credentials (ANBIMA_Client_ID / ANBIMA_Client_Secret) appear to be invalid or expired. Please verify them in Supabase Project Secrets.`
+          ? ' ANBIMA credentials (ANBIMA_Client_ID / ANBIMA_Client_Secret) appear to be invalid or expired. Please verify them in Supabase Project Secrets.'
           : ''
       return {
         entries: [],
@@ -514,12 +568,12 @@ Deno.serve(async (req: Request) => {
 
   try {
     const clientId =
-      Deno.env.get('ANBIMA_CLIENT_ID') ||
       Deno.env.get('ANBIMA_Client_ID') ||
+      Deno.env.get('ANBIMA_CLIENT_ID') ||
       Deno.env.get('ANDIMA_Client_ID')
     const clientSecret =
-      Deno.env.get('ANBIMA_CLIENT_SECRET') ||
       Deno.env.get('ANBIMA_Client_Secret') ||
+      Deno.env.get('ANBIMA_CLIENT_SECRET') ||
       Deno.env.get('ANDIMA_Client_Secret')
 
     if (!clientId || !clientSecret) {
@@ -535,7 +589,12 @@ Deno.serve(async (req: Request) => {
       })
     }
 
-    console.log('[fetch-vna-anbima] Starting VNA fetch for NTN-B maturity:', TARGET_MATURITY_DATE)
+    console.log(
+      '[fetch-vna-anbima] Starting VNA fetch for NTN-B maturity:',
+      TARGET_MATURITY_DATE,
+      'Client ID:',
+      clientId.slice(0, 4) + '****',
+    )
 
     const token = await getAnbimaToken(clientId, clientSecret)
     const { entries, triedDates, lastStatus, lastRawBody, foundBonds } = await fetchVnaWithFallback(
